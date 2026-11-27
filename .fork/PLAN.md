@@ -71,7 +71,7 @@ line that's obvious to re-apply.
 | `x-ci.yml` | push/PR → `custom` | Reuses upstream `partial-backend.yaml` / `partial-frontend.yaml` via `uses:` (no copy-paste), plus `go test ./internal/custom/...` against **both SQLite and Postgres**. Custom migrations need checking on both. |
 | `x-seam-guard.yml` | push/PR → `custom` | `git diff --name-only $(git merge-base origin/main HEAD)..HEAD`. Fails if a changed path is neither custom-owned (§2) nor listed in `SEAMS.txt`. Also fails if `go.mod`, `go.sum`, `pnpm-lock.yaml`, `frontend/locales/*` or `backend/internal/data/ent/**` changed. This turns rules R1/R2/R6/R8 into an automated check. |
 | `x-rebase-canary.yml` | weekly cron + manual | Fetches upstream `main` and runs a trial rebase plus the build and tests. If anything fails, it opens or updates an issue labelled `rebase-break` with the conflicting files. You learn about breakage before you're mid-upgrade. |
-| `x-docker.yml` | push → `custom`, tags `x-v*` | Builds the stock `Dockerfile` (it already picks up `frontend/` and the whole backend module) and pushes to `ghcr.io/salthepal/homebox:custom` (+ `:custom-<sha>`). |
+| `x-docker.yml` ✅ | push → `custom` (backend/frontend/Dockerfile paths) + manual | Builds the stock `Dockerfile` (amd64, for Unraid) and pushes to GHCR only: `ghcr.io/salthepal/homebox:custom` + `:custom-<sha>`. Uses the GHA build cache, since the fork can't write to upstream's `devcache`. Deliberately a **new file**, not an edit to `docker-publish.yaml` (R9). Make the GHCR package public once so Unraid pulls without credentials. |
 | *Disable in Actions UI* | — | `docker-publish*`, `binaries-publish`, `clear-stale-docker-images`, `issue-gatekeeper`, `update-currencies`, `copilot-setup-steps`. They need upstream secrets or don't apply to a fork. |
 
 Also: add a branch ruleset on `custom` that requires `x-ci` and `x-seam-guard`, with admin bypass.
@@ -117,8 +117,13 @@ links to one or more items, and tracks estimated vs actual cost.
 Upstream `MaintenanceEntry` has `scheduled_date` (planned) and `date` (completed). The repo publishes
 **no event-bus events** for maintenance changes, so detecting changes has to happen on our side.
 
-### Two-stage approach
-**Stage A — ICS feed (small, low risk):**
+### Decisions (answered 2026-11-27)
+- Runs on **Unraid** and is reachable from Google through Cloudflare. Production DB is **Postgres**. CI runs custom tests on Postgres first and keeps SQLite as a cheap secondary check, since upstream supports both.
+- Sync into **one existing shared household calendar**. We don't create a calendar. The user picks it from their calendar list.
+- Completed maintenance **stays on the calendar with a ✅**.
+
+### Approach: push sync first, ICS as an optional fallback
+**Stage A — ICS feed (optional, deprioritized now that push sync is the plan):**
 `GET /api/v1/x/calendar/{token}.ics` returns all-day VEVENTs for scheduled, not-completed
 maintenance plus project steps with a due date. Each event has a stable `UID` (`<entry-id>@homebox`)
 and a link back to `/item/{id}/maintenance`. The token is per group, random, revocable, and stored hashed.
@@ -127,21 +132,22 @@ You subscribe in Google Calendar via "From URL".
 - Downside: Google refreshes subscribed feeds only every ~8–24 h, the feed is one-way, and the URL must be reachable from Google. Behind a Cloudflare tunnel with Access, that means a bypass policy for only `/api/v1/x/calendar/*`.
 
 **Stage B — Push sync via Calendar API (the real feature):**
-- **OAuth:** you use your own Google Cloud OAuth client (Web app, scope `https://www.googleapis.com/auth/calendar.events` + `calendar.app.created`, so we create and own a dedicated "Homebox Maintenance" calendar). Uses `golang.org/x/oauth2`, already a dep, plus a hand-written REST client (no `google.golang.org/api` direct dep, R6).
+- **OAuth:** you use your own Google Cloud OAuth client (Web app). Scopes: `calendar.events` (write events on the existing shared calendar) + `calendar.calendarlist.readonly` (to show a picker). Redirect: `https://<homebox-host>/api/v1/x/gcal/callback`. Uses `golang.org/x/oauth2`, already a dep, plus a hand-written REST client (no `google.golang.org/api` direct dep, R6).
+- **Shared-calendar safety:** the calendar holds other household events, so Homebox **only ever touches events it created**. Each one is tagged `extendedProperties.private.homebox_id` + `homebox_source`. Reconcile and rebuild query with `privateExtendedProperty=homebox_source=…`, and deletes are restricted to IDs in `x_gcal_links`. Disconnecting offers "remove Homebox events", never "delete calendar".
   - ⚠️ Set the consent screen to **"In production"** (unverified is fine for personal use). In "Testing" mode, refresh tokens expire after 7 days.
 - **Config (own env, `HBOX_X_` prefix):** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `PUBLIC_BASE_URL` (for redirect and event links), `SECRET_KEY` (AES-GCM for refresh tokens at rest).
 - **Tables:** `x_gcal_connections` (group_id, connected_by_user, calendar_id, enc_refresh_token, options: include_completed / reminder_minutes / include_project_steps, last_sync_at, last_error) and `x_gcal_links` (source_type `maintenance|project_step`, source_id, group_id, event_id, content_hash, synced_at).
 - **Sync = reconciliation, not event-driven:**
   1. A recurring task (every 15 min, `NewTask` pattern from `recurring.go`) runs per connected group. It loads the desired set (scheduled maintenance + optional completed + project steps), hashes each one, and diffs against `x_gcal_links`: insert / patch / delete. Each event carries `extendedProperties.private.homebox_id`, so a lost link table can be rebuilt by listing the calendar.
   2. For a near-instant update, a **runtime ent hook** (`client.MaintenanceEntry.Use(...)`, registered in `registerCustom`, no codegen) triggers a debounced reconcile for that group after any create, update or delete. Cascade deletes from item deletion skip hooks, and step 1 covers those.
-- **Event shape:** all-day on `scheduled_date`, title `🔧 {item}: {task}`, description = notes + cost + deep link, popup reminder from the options. When completed: delete the event, or retitle it `✅ …` on the completion `date` if include_completed is on.
+- **Event shape:** all-day on `scheduled_date`, title `🔧 {item}: {task}`, description = notes + cost + deep link, popup reminder from the options. **When completed:** retitle it `✅ {item}: {task}`, move it to the completion `date`, drop the reminder, and add the actual cost. It stays on the calendar as history. Entries logged directly as completed (no schedule) also get a `✅` event on their `date`.
 - **Failure handling:** treat 401/invalid_grant as "disconnected" and show it in the UI. Back off on 429/5xx. `last_error` is shown on the settings page.
 - **UI (layer):** `/collection/x-calendar` settings page, linked from the existing collection settings via a small layer-provided link (or the nav seam). It has Connect Google, calendar status, options, "Sync now", the ICS URL with regenerate, and Disconnect (optionally deleting the calendar).
 - **Later (not v1):** two-way sync, where deleting or moving an event in Google updates Homebox, via `events.watch` push channels. That needs a public HTTPS webhook. Also maintenance recurrence (upstream has none).
 
 ### Milestones
-1. **G1** ICS feed + token management + settings page stub.
-2. **G2** OAuth connect/disconnect flow + encrypted token store + calendar creation.
+1. **G1** Settings page + OAuth connect/disconnect + encrypted token store + existing-calendar picker.
+2. **G2** (optional) ICS feed as a read-only fallback.
 3. **G3** Reconciler + recurring task + ent hook + REST client with tests against an `httptest` fake Google.
 4. **G4** Project-step events (needs P2) + options UI + error surfacing.
 
@@ -152,15 +158,13 @@ You subscribe in Google Calendar via "From URL".
 | Order | Work | Rough size |
 |-------|------|-----------|
 | 1 | P0 scaffolding + CI + seam guard | 1 PR, medium |
-| 2 | G1 ICS feed (quick win that also proves the custom plumbing end to end) | small |
-| 3 | P1–P3 Projects core | 2–3 PRs |
-| 4 | G2–G3 Calendar push sync | 2 PRs |
+| 2 | P1–P3 Projects core | 2–3 PRs |
+| 3 | G1 + G3 Calendar push sync (G2 ICS only if wanted) | 2 PRs |
 | 5 | P4 + G4 integrations | 1 PR |
 
 Each PR targets `custom` and must be green on `x-ci` + `x-seam-guard`.
 
-## 9. Open questions
-1. Deployment: where does Homebox run (Unraid container?), and is it reachable from Google (Cloudflare tunnel / Access)? This decides how practical Stage A is and what the OAuth redirect URL is.
-2. SQLite or Postgres in production? (CI tests both either way.)
-3. Should "completed maintenance" stay on the calendar as history, or disappear?
-4. One shared household calendar per collection (planned), or per-user calendars?
+## 9. Answered
+Unraid · reachable via Cloudflare · Postgres · completed stays with ✅ · one existing shared household calendar. See §7 "Decisions".
+
+Remaining before G1: the public hostname for the OAuth redirect, and creating the Google Cloud OAuth client (consent screen "In production").
