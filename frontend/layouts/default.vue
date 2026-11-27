@@ -254,6 +254,7 @@
   import MdiLogout from "~icons/mdi/logout";
   import MdiFileDocumentMultiple from "~icons/mdi/file-document-multiple";
   import MdiChevronRight from "~icons/mdi/chevron-right";
+  import { customNavItems } from "~~/layers/custom/nav"; // fork seam: .fork/SEAMS.txt
 
   import {
     Sidebar,
@@ -445,6 +446,7 @@
       name: computed(() => t("menu.maintenance")),
       to: "/maintenance",
     },
+    ...customNavItems(t, route), // fork seam: .fork/SEAMS.txt
     {
       icon: MdiAccount,
       id: 6,

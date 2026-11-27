@@ -44,7 +44,7 @@ Create:
 
 **Status (2026-11-27):** done. Tests pass on SQLite and Postgres 16. A real server binary against Postgres served `/api/v1/status` 200, `/api/v1/x/ping` 401 without a token and 200 with one, and `x_goose_db_version` held version 1. The seam is 3 lines (an `if err := registerCustom(...); err != nil { return err }`) because upstream lint forbids `log.Fatal`.
 
-### [ ] F3 · Frontend layer scaffolding
+### [x] F3 · Frontend layer scaffolding
 - `frontend/layers/custom/nuxt.config.ts` (minimal `defineNuxtConfig({})`). Confirm Nuxt picks the layer up automatically; if it doesn't, stop and report rather than editing `frontend/nuxt.config.ts`.
 - `plugins/x-i18n.ts`: merges `locales/en.json` (and any other present locale files) into the app's vue-i18n instance. Keys are namespaced under `x.*`.
 - `lib/api/client.ts`: a thin wrapper reusing the app's existing authenticated request helper (find how `frontend/composables` builds `useUserApi`, and reuse its base requests/auth/tenant header). Typed methods are added per feature.
@@ -54,6 +54,8 @@ Create:
 - **Seams:** the nav spread in `frontend/layouts/default.vue` and the tabs spread in `frontend/pages/item/[id]/index.vue` (PLAN §4). Add both to SEAMS.txt.
 
 **Done when:** FE + SEAM pass. In the browser, the nav shows "Projects" and the page shows ping OK. `frontend/locales/*` is untouched.
+
+**Status (2026-11-27):** done. Lint and typecheck pass. Checked in Playwright (Nuxt dev + backend on Postgres): after login, the nav shows Projects after Maintenance, `/x/projects` renders translated `x.*` strings and "Custom backend connected", and all upstream nav entries are intact. Each seam is one import + one spread line, marked `// fork seam`.
 
 ---
 
@@ -118,4 +120,8 @@ Per-group revocable token (stored hashed), `GET /api/v1/x/calendar/{token}.ics`,
 - **ent:** `go generate ./internal/custom/ent` modifies `backend/go.sum` (the generator's own deps). Always `git checkout -- backend/go.sum backend/go.mod` afterwards. The generated code builds without them.
 - **Lint:** upstream golangci-lint (run by x-ci's `backend` job) covers our code too: no `log.Fatal`, no `init()`, testifylint rules apply.
 - **Local server run:** needs `HBOX_AUTH_API_KEY_PEPPER` (≥32 bytes) or it panics at startup.
+- **Layer i18n:** upstream loads locale JSON as read-only ES module namespaces, so `mergeLocaleMessage` throws ("Cannot assign to property 'x' of [object Module]"). `plugins/x-i18n.ts` uses `setLocaleMessage(locale, {...existing, ...ours})`. Keep custom keys under `x.*`.
+- **Layer imports:** inside the layer, `~`/`@` resolve to the upstream app (`@/components/...`). Import layer files relatively, or from upstream seams via `~~/layers/custom/...`. No component auto-import.
+- **Frontend API:** add methods to `CustomApi` in `layers/custom/lib/api/client.ts` and use `useCustomApi()`. It shares upstream's auth, X-Tenant and 401 handling.
+- **Browser check:** `pnpm dev --port 3000` in `frontend/` proxies `/api` to `localhost:7745`. Run the backend binary on 7745. The first page load takes ~1–3 min while Vite pre-bundles.
 - **Local Postgres in a cloud session:** `/usr/lib/postgresql/16/bin/initdb` + `pg_ctl` as the `postgres` user, data dir under `/var/tmp`. `TEST_X_PG_DSN=postgres://postgres@localhost:5432/postgres?sslmode=disable`.

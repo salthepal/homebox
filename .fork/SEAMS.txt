@@ -1,6 +1,6 @@
 # Upstream files the `custom` branch is allowed to modify (one-line seams only).
 # Enforced by .fork/seam-guard.sh. Adding a line here requires the owner's OK.
-# Planned seams are commented out until the task that introduces them (F2/F3) uncomments them.
+# Each entry is one spread/call line plus its import, marked "fork seam" in the file.
 backend/app/api/main.go
-# frontend/layouts/default.vue
-# frontend/pages/item/[id]/index.vue
+frontend/layouts/default.vue
+frontend/pages/item/[id]/index.vue

@@ -1,0 +1,13 @@
+{
+  "x": {
+    "menu": {
+      "projects": "Projects"
+    },
+    "projects": {
+      "title": "Projects",
+      "coming_soon": "Multi-step upgrade projects are coming soon.",
+      "backend_ok": "Custom backend connected",
+      "backend_error": "Custom backend not reachable"
+    }
+  }
+}

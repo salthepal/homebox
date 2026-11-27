@@ -5,6 +5,7 @@
   import { filterZeroValues } from "~~/components/global/DetailsSection/types";
   import type { ItemAttachment } from "~~/lib/api/types/data-contracts";
   import MdiPackageVariant from "~icons/mdi/package-variant";
+  import { customItemTabs } from "~~/layers/custom/item-tabs"; // fork seam: .fork/SEAMS.txt
   import MdiPlus from "~icons/mdi/plus";
   import MdiMinus from "~icons/mdi/minus";
   import MdiDelete from "~icons/mdi/delete";
@@ -478,6 +479,7 @@
         name: "global.maintenance",
         to: `/item/${itemId.value}/maintenance`,
       },
+      ...customItemTabs(itemId), // fork seam: .fork/SEAMS.txt
       {
         id: "edit",
         name: "global.edit",
