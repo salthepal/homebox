@@ -2,7 +2,7 @@
 
 **How to work a task (agents):**
 1. Read `.fork/PLAN.md` (rules R1–R11 are binding) and the task below. Do **one** task per session/PR.
-2. Branch from latest `custom`: `x/<task-id>-<slug>` (e.g. `x/f1-ci-guardrails`). If your harness assigns a branch, use that.
+2. Branch from latest `custom`: `x/<task-id>-<slug>` (e.g. `x/f1-ci-guardrails`). **`custom` requires a PR (ruleset), so a direct push to it is rejected.** If your harness assigns `custom` as the working branch, still push to an `x/…` branch and open the PR from there.
 3. Implement → run the task's checks locally → open a **draft PR into `custom`** titled `x(<area>): <summary> [<task-id>]`.
 4. Tick the task's box in this file in the same PR. Add anything surprising to "Notes for later tasks" at the bottom.
 5. Never push to `main`. Never edit upstream files except the seams listed in `.fork/SEAMS.txt`. If you think a new seam is needed, stop and ask. Don't add one silently.

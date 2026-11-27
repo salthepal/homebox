@@ -1,7 +1,19 @@
 # GitHub repo setup — salthepal/homebox
 
-One-time configuration. Most of it is clicking in GitHub settings. Items marked 🤖 can be done by an agent
-once the files exist. Tick boxes as you go.
+One-time configuration. **Sections 1, 2, 3 (except creating the PAT) and 5 are automated:**
+
+```bash
+bash .fork/scripts/apply-repo-settings.sh
+```
+
+Run it from any machine where `gh` is logged in as salthepal. It's idempotent. After task F1 merges and CI has run once on `custom`:
+
+```bash
+bash .fork/scripts/apply-repo-settings.sh add-required-checks
+```
+
+Still manual: creating the PAT (the script prompts you to paste it), making the GHCR package public, and Google Cloud.
+The checklist below documents what the script sets.
 
 ## 1. Branches
 - [ ] **Default branch → `custom`**: Settings → General → Default branch → switch to `custom`.
