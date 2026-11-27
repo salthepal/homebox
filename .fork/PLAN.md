@@ -1,170 +1,163 @@
-# `custom` branch plan — salthepal/homebox
+# salthepal/homebox — fork plan (overview)
 
-Goal: add personal features (multi-step upgrade **Projects**, **Google Calendar** sync for
-maintenance) on `custom`, while `main` keeps tracking `sysadminsmedia/homebox` and
-`git rebase main` stays painless.
+> **Agents: read this file, then `.fork/TASKS.md`. Do the next unchecked task only.**
+> Repo/GitHub settings that a human must click through are in `.fork/REPO-SETUP.md`.
 
----
+## 0. What this fork is
 
-## 1. Ground rules (the rebase contract)
+- `sysadminsmedia/homebox` (**upstream**) → `salthepal/homebox:main` (**mirror**) → `salthepal/homebox:custom` (**our features**).
+- Personal features only: **Projects** (multi-step upgrades) and **Google Calendar sync** for maintenance.
+- Deployed on Unraid from `ghcr.io/salthepal/homebox:custom`, with Postgres. Reachable publicly through a Cloudflare tunnel.
 
-The rule behind all of these: **add new files, don't edit upstream files.** Every edit to
-an upstream file can conflict on a rebase. A new file can only conflict if upstream adds a file
-at the same path.
+## 1. Branch model and flow
+
+```
+upstream/main ──sync (x-sync-main.yml, daily)──▶ main  (pure mirror, never commit here)
+                                                  │
+                                    rebase (.fork/rebase.sh or x-rebase.yml)
+                                                  ▼
+x/<feature> ──draft PR, squash-merge──▶ custom  (default branch, deployed)
+                                                  │
+                                          x-docker.yml ──▶ ghcr.io/salthepal/homebox:custom
+```
+
+| Branch | Purpose | Who writes |
+|--------|---------|-----------|
+| `main` | Exact mirror of upstream `main`. Fast-forward only. | Only the sync workflow (or the GitHub "Sync fork" button). |
+| `custom` | `main` + our commits on top. **Default branch.** Deploy source. | Squash merges from `x/*` PRs, plus force-push after a rebase. |
+| `x/<feature>` | One task from TASKS.md = one branch = one PR into `custom`. | Agents/you. Deleted on merge. |
+
+- **Rebasing custom onto main:** run periodically (after a sync brings new upstream commits, at least monthly). A weekly canary does a trial run and opens an issue if it breaks. Use `git rebase main`, never `git merge main`. That keeps our delta as a clean stack of feature commits on top of upstream.
+- After a rebase, `custom` is force-pushed (`--force-with-lease`). Any open `x/*` branch must then be re-based: `git rebase --onto origin/custom <old-custom-sha> x/<feature>`.
+- Squash-merge every PR with a conventional prefix (`x(projects): …`, `x(gcal): …`, `x(fork): …`). One commit per feature step makes rebase conflicts small and attributable.
+
+## 2. The rebase contract (rules every change must follow)
+
+The rule behind all of these: **add new files, don't edit upstream files.** Edits to upstream files conflict on rebase. New files almost never do.
 
 | # | Rule | Why (what in this repo forces it) |
 |---|------|-----------------------------------|
-| R1 | All custom code lives in **custom-owned paths** (see §2). Upstream files are edited only at listed **seams** (§3), each a single line. | Keeps rebase conflicts to a known handful of lines. |
-| R2 | **Never add ent schemas to `backend/internal/data/ent/schema`.** Custom tables get their **own ent client** in `backend/internal/custom/ent`. | Running `go generate` in the upstream ent dir rewrites ~128 generated files, and every one of them would conflict on every rebase. |
-| R3 | **Custom migrations use a separate goose version table** (`x_goose_db_version`) and their own embedded FS. Never put files in `backend/internal/data/migrations/*`. | goose fails `Up` when it finds "missing" (out-of-order) versions. An upstream migration dated before ours would brick startup. |
-| R4 | **No `ALTER` on upstream tables, and no DB-level foreign keys pointing at upstream tables.** Store upstream IDs (`entity_id`, `group_id`, `maintenance_entry_id`) as plain UUID columns. Clean up orphans in app code. | Upstream rebuilds tables (e.g. `recreate_item_templates`, `merge_entities`, the items→entities rename). In SQLite, dropping a parent table runs an implicit DELETE, so an `ON DELETE CASCADE` would quietly wipe our rows. |
-| R5 | Prefix custom tables with `x_` and custom API routes with `/api/v1/x/...`. | No name collisions with future upstream tables or routes. |
-| R6 | **No new Go or npm dependencies** unless they are already in `go.mod` / `package.json`. | Upstream bumps deps constantly, so `go.sum` and `pnpm-lock.yaml` would conflict on every rebase. `golang.org/x/oauth2` is already a direct dep. The Calendar REST calls and ICS output are small enough to write by hand. |
-| R7 | Leave custom handlers **out of upstream swagger** (they live outside the swag scan dirs). Custom TS types sit in the frontend layer. | `swagger.json`/`docs.go` and `frontend/lib/api/types` are committed generated files. Regenerating them on `custom` causes conflicts. |
-| R8 | Custom UI strings are merged at runtime from the layer's own locale files. **Don't touch `frontend/locales/*.json`.** | Weblate rewrites those files constantly. |
-| R9 | Don't edit upstream workflows. Turn off the ones you don't want in the Actions UI. Custom CI goes in `.github/workflows/x-*.yml`. | Same conflict reason. |
-| R10 | When a custom feature calls upstream Go code (e.g. the maintenance repo), the call goes through **one adapter file** per upstream package (`backend/internal/custom/upstream/*.go`). | When upstream changes a signature, the compile break shows up in one file, and CI catches it. |
+| R1 | All custom code lives in **custom-owned paths** (§3). Upstream files are edited only at the **seams** in `.fork/SEAMS.txt`, one line each. | Keeps rebase conflicts to a known handful of lines. `x-seam-guard` enforces it. |
+| R2 | **Never add or change ent schemas in `backend/internal/data/ent/schema`**, and never regenerate upstream ent. Custom tables use their **own ent client** in `backend/internal/custom/ent`. | Regenerating upstream ent rewrites ~128 generated files, and they'd conflict on every rebase. |
+| R3 | **Custom migrations use their own goose version table `x_goose_db_version`** and their own embedded FS. Never add files to `backend/internal/data/migrations/*`. SQL migrations only (no Go migrations: goose's Go registry is global). | goose refuses to start on out-of-order ("missing") versions. An upstream migration dated before ours would brick startup. |
+| R4 | **No `ALTER` of upstream tables, and no DB foreign keys pointing at upstream tables.** Store upstream IDs (`group_id`, `entity_id`, `maintenance_entry_id`) as plain UUID columns. Clean up orphans in app code. FKs *between our own tables* are fine. | Upstream drops and recreates tables (`recreate_item_templates`, `merge_entities`, the items→entities rename). An FK to them can block upstream migrations or, with cascades, silently wipe our rows. |
+| R5 | Tables are prefixed `x_`. API routes go under `/api/v1/x/...`. Env vars are prefixed `HBOX_X_`. Frontend routes go under `/x/...`. | No collisions with future upstream names. |
+| R6 | **No new Go or npm dependencies** unless already in `backend/go.mod` / `frontend/package.json`. `golang.org/x/oauth2` and `ardanlabs/conf` are already there. Write the Calendar REST calls and ICS output by hand. | Upstream bumps deps constantly, so `go.sum` and `pnpm-lock.yaml` would conflict on every rebase. |
+| R7 | Custom handlers are **not** in upstream swagger (they live in `backend/internal/custom/api`, outside the swag scan dirs). Don't run `task swag` / `task typescript-types` on custom changes. Custom TS types are hand-written in the layer. | `backend/app/api/static/docs/*` and `frontend/lib/api/types/*` are committed generated files. |
+| R8 | UI strings live in `frontend/layers/custom/locales/en.json`, merged at runtime. **Never edit `frontend/locales/*.json`.** | Weblate rewrites those files constantly. |
+| R9 | **Never edit upstream workflows.** Custom CI = `.github/workflows/x-*.yml`. Unwanted upstream workflows are disabled in the Actions UI. | Same conflict reason. |
+| R10 | Calls into upstream Go code go through **adapters in `backend/internal/custom/upstream/`**, one file per upstream package. | When upstream changes a signature, the break is confined to one file, and CI catches it at compile time. |
+| R11 | Custom code must work on **Postgres (primary) and SQLite**. Every custom migration exists in both `postgres/` and `sqlite3/`. Tests run on both. | Production is Postgres. Upstream supports both, and its tests default to SQLite. |
 
-## 2. Layout
+## 3. Layout (custom-owned paths)
 
 ```
-.fork/                         # fork docs + tooling (never upstream)
-  PLAN.md  SEAMS.txt  rebase.sh  Taskfile.yml
-.github/workflows/x-*.yml      # custom CI
-backend/app/api/x_register.go  # package main: registerCustom(...) — the one backend entry point
+.claude/CLAUDE.md                      # agent entry point (auto-loaded by Claude Code)
+.fork/                                 # PLAN.md, TASKS.md, REPO-SETUP.md, SEAMS.txt, rebase.sh, seam-guard.sh
+.github/workflows/x-*.yml              # custom CI
+backend/app/api/x_register.go          # package main: registerCustom(...) — the only backend entry point
+backend/app/api/x_*_test.go            # tests that need package main
 backend/internal/custom/
-  config/        # own env parsing, prefix HBOX_X_ (ardanlabs/conf, already a dep)
-  migrations/{sqlite3,postgres}/   # own goose FS + x_goose_db_version
-  ent/schema/ + ent/ (generated)   # own ent client, same *sql.DB
-  upstream/      # adapters onto upstream repos/services (R10)
-  projects/      # feature 1: repo + service
-  gcal/          # feature 2: oauth, REST client, ICS, reconciler
-  api/           # chi handlers mounted under /api/v1/x (own swag instance, optional)
-frontend/layers/custom/        # Nuxt layer: Nuxt 4.4 auto-registers ~~/layers/*, so nuxt.config stays untouched
-  pages/x/...  components/  composables/  lib/api/  locales/en.json  plugins/x-i18n.ts
+  config/                              # HBOX_X_* env parsing (ardanlabs/conf)
+  migrations/{postgres,sqlite3}/*.sql  # own goose FS, table x_goose_db_version
+  migrations/migrations.go             # embed + Run(ctx, db, driver)
+  ent/schema/*.go  ent/generate.go     # own ent client (generated code committed under ent/)
+  upstream/                            # adapters onto upstream repos/services (R10)
+  projects/                            # Feature 1: repo + service
+  gcal/                                # Feature 2: oauth, REST client, reconciler, (ics)
+  api/                                 # chi handlers for /api/v1/x
+frontend/layers/custom/                # Nuxt layer (Nuxt 4.4 auto-registers ~~/layers/*, no nuxt.config edit)
+  nuxt.config.ts  pages/x/**  pages/item/[id]/index/projects.vue
+  components/  composables/  lib/api/  locales/en.json  plugins/x-i18n.ts  nav.ts  item-tabs.ts
 ```
 
-## 3. Seams (the only upstream edits) — tracked in `.fork/SEAMS.txt`
+## 4. Seams (the only upstream edits). Source of truth: `.fork/SEAMS.txt`
 
-| File | Change |
-|------|--------|
-| `backend/app/api/main.go` (~L242–297) | Add `registerCustom(app, cfg, router, chain, runner)` after `mountRoutes`, before `registerRecurringTasks`. It runs custom migrations, builds the custom ent client, mounts `/api/v1/x`, and registers background tasks. |
-| `frontend/layouts/default.vue` (nav array ~L411) | Add one entry: `...customNavItems()`, imported from the layer. |
-| `frontend/pages/item/[id]/index.vue` (tabs ~L478) | Add one entry: `...customItemTabs(itemId)`, for the "Projects" tab. The tab page is a new file at `layers/custom/pages/item/[id]/index/projects.vue`. |
+| File | Exact change |
+|------|--------------|
+| `backend/app/api/main.go` | One line after `app.mountRoutes(router, chain, app.repos)` and `runner := graceful.NewRunner()`: `registerCustom(app, cfg, router, chain, runner)`. It runs custom migrations, opens the custom ent client on the same `*sql.DB`, mounts `/api/v1/x`, registers ent hooks, and adds background tasks. |
+| `frontend/layouts/default.vue` | Spread `...customNavItems(t, route)` into the nav array (around the `/maintenance` entry), plus its import. |
+| `frontend/pages/item/[id]/index.vue` | Spread `...customItemTabs(itemId)` into the tabs array (next to the `global.maintenance` tab), plus its import. |
 
-Three one-line seams in total. If upstream rewrites one of these areas, the conflict is a single
-line that's obvious to re-apply.
+Imports count as part of the seam. If upstream rewrites one of these areas, re-apply the single spread line. `git rerere` remembers the resolution.
 
-## 4. Branch and rebase workflow
+## 5. Facts about upstream that the implementation relies on (verified 2026-11-27)
 
-- `main` = clean mirror of upstream (GitHub "Sync fork", or a scheduled sync). **Never commit to main.**
-- `custom` = `main` + custom commits. Update it with `git rebase main` (history stays linear and the custom delta stays readable). Push with `--force-with-lease`. Only you use this branch, so force-pushing it is fine.
-- Keep commits feature-scoped (`x(projects): …`, `x(gcal): …`, `x(fork): …`) so a broken one is easy to drop or fix during a rebase.
-- Enable `git rerere` so a seam conflict you've resolved once gets re-applied automatically.
-- `.fork/rebase.sh`: fetch → rebase → `go build ./... && go test ./internal/custom/...` → `pnpm typecheck` → print a seam diff summary.
-- Make **`custom` the fork's default branch**. Scheduled workflows only run from the default branch, and the default branch is what you deploy. `main` stays a pure mirror.
+- **Migrations:** `backend/app/api/setup.go` `runMigrations` calls global `goose.Up` with the default table `goose_db_version`. Our runner must use a goose **Provider** with a custom store (`database.NewStore(<dialect>, "x_goose_db_version")`, `goose.WithStore`). Don't call the global `goose.SetTableName`, because it would affect upstream's runs.
+- **Routes:** `backend/app/api/routes.go` uses `r.Route(prefix+"/v1", …)`, with `prefix="/api"`. The auth middleware stack is `a.mwAuthToken, a.mwTenant, a.mwRoles(RoleModeOr, authroles.RoleUser.String())` (+ `a.mwGroupOwner` for owner-only). These are methods on `*app` in package main, which is why `x_register.go` lives in package main. Mount ours with `router.Route("/api/v1/x", …)`, and add a test that proves both `/api/v1/status` and `/api/v1/x/ping` resolve (chi sub-router precedence).
+- **Auth context:** `services.UseUserCtx(ctx)` gives the user, and the group/tenant ID comes from the `services.Context` (`GID`). Scope every query by group ID.
+- **Background tasks:** `backend/app/api/recurring.go` uses `runner.AddPlugin(NewTask(name, interval, fn))`.
+- **Maintenance:** `MaintenanceEntry` has `entity_id`, `date` (completed), `scheduled_date` (planned), `name`, `description`, `cost`. The repo publishes **no event-bus events** for it. Change detection = runtime ent hook (`<upstream ent client>.MaintenanceEntry.Use(...)`, no codegen needed) + periodic reconciliation.
+- **Frontend:** Nuxt 4.4.7, `ssr: false`, `components.dirs: []` (no component auto-import, so import explicitly). i18n is a plain `vue-i18n` plugin (`frontend/plugins/i18n.ts`), not `@nuxtjs/i18n`. The layer merges its messages with `i18n.global.mergeLocaleMessage`.
+- **Docker:** the stock `Dockerfile` copies all of `frontend/` and builds the whole backend module, so layers and custom packages are included automatically.
 
-## 5. CI (all new files)
+## 6. Feature 1: Projects (multi-step upgrades)
 
-| Workflow | Trigger | Does |
-|----------|---------|------|
-| `x-ci.yml` | push/PR → `custom` | Reuses upstream `partial-backend.yaml` / `partial-frontend.yaml` via `uses:` (no copy-paste), plus `go test ./internal/custom/...` against **both SQLite and Postgres**. Custom migrations need checking on both. |
-| `x-seam-guard.yml` | push/PR → `custom` | `git diff --name-only $(git merge-base origin/main HEAD)..HEAD`. Fails if a changed path is neither custom-owned (§2) nor listed in `SEAMS.txt`. Also fails if `go.mod`, `go.sum`, `pnpm-lock.yaml`, `frontend/locales/*` or `backend/internal/data/ent/**` changed. This turns rules R1/R2/R6/R8 into an automated check. |
-| `x-rebase-canary.yml` | weekly cron + manual | Fetches upstream `main` and runs a trial rebase plus the build and tests. If anything fails, it opens or updates an issue labelled `rebase-break` with the conflicting files. You learn about breakage before you're mid-upgrade. |
-| `x-docker.yml` ✅ | push → `custom` (backend/frontend/Dockerfile paths) + manual | Builds the stock `Dockerfile` (amd64, for Unraid) and pushes to GHCR only: `ghcr.io/salthepal/homebox:custom` + `:custom-<sha>`. Uses the GHA build cache, since the fork can't write to upstream's `devcache`. Deliberately a **new file**, not an edit to `docker-publish.yaml` (R9). Make the GHCR package public once so Unraid pulls without credentials. |
-| *Disable in Actions UI* | — | `docker-publish*`, `binaries-publish`, `clear-stale-docker-images`, `issue-gatekeeper`, `update-currencies`, `copilot-setup-steps`. They need upstream secrets or don't apply to a fork. |
+A project ("Upgrade NAS to 10GbE") is an ordered checklist of steps, linked to one or more items, with a status lifecycle and cost tracking.
 
-Also: add a branch ruleset on `custom` that requires `x-ci` and `x-seam-guard`, with admin bypass.
-Add `CLAUDE.md`/`AGENTS`-style rules in `.fork/AGENTS.md` that point agents at this contract,
-and a root-level `.github/instructions/x-fork.instructions.md` (a new file) so Copilot and Claude both pick it up.
+**Tables**
+- `x_projects`: id uuid pk, group_id uuid, name varchar(255), description text, status (`idea|planning|in_progress|on_hold|done|cancelled`), priority int (0–3), target_date date null, budget numeric null, started_at / completed_at timestamptz null, created_at / updated_at.
+- `x_project_steps`: id, project_id → `x_projects` ON DELETE CASCADE, position int, title varchar(255), notes text, status (`todo|doing|blocked|done|skipped`), due_date date null, est_cost / actual_cost numeric null, url text null, entity_id uuid null, log_as_maintenance bool default false, maintenance_entry_id uuid null, completed_at null, timestamps.
+- `x_project_entities`: (project_id → `x_projects` CASCADE, entity_id uuid) PK both; index on entity_id.
+- Index `x_projects(group_id, status)`.
 
----
+**API** (`/api/v1/x`, userMW)
+- `GET/POST /projects`, `GET/PUT/DELETE /projects/{id}`
+- `POST /projects/{id}/steps`, `PUT/DELETE /projects/{id}/steps/{stepId}`, `PATCH /projects/{id}/steps/order` (body: ordered step IDs)
+- `POST /projects/{id}/steps/{stepId}/complete` (body: `{actual_cost?, log_as_maintenance?}`)
+- `PUT /projects/{id}/entities` (replace links), `GET /entities/{entityId}/projects`
 
-## 6. Feature 1 — Multi-step upgrade Projects
+**Behavior**
+- Project status auto-suggest: the first step moving to `doing` sets `in_progress`/`started_at` if the project is in idea/planning. All steps done or skipped → prompt (UI) to mark it `done`. Never auto-close silently.
+- Completing a step with `log_as_maintenance` + `entity_id` creates an upstream maintenance entry via `upstream/maintenance.go` (name = step title, description = notes + "From project: …", cost = actual_cost, date = now) and stores `maintenance_entry_id`.
+- Validate that every `entity_id` belongs to the caller's group (via adapter) before linking.
+- Orphan sweeper (daily task): delete `x_project_entities` rows, and null `entity_id`/`maintenance_entry_id`, where the upstream row is gone.
 
-**What it is:** a project ("Upgrade NAS to 10GbE", "Kitchen faucet swap") with an ordered
-checklist of steps. It moves through *idea → planning → in progress → on hold → done / cancelled*,
-links to one or more items, and tracks estimated vs actual cost.
+**UI** (layer)
+- Nav "Projects" → `/x/projects`: grouped by status (columns on desktop, sections on mobile). Card = name, progress `done/total`, cost actual-vs-budget, target date, linked item chips.
+- `/x/projects/[id]`: header (status select, dates, budget), linked items picker, step checklist with inline edit, up/down reorder (no dnd lib, R6), complete dialog with "log as maintenance" toggle.
+- Item page tab "Projects" → `/item/[id]/projects`: linked projects + "New project for this item".
 
-### Data model (own ent client, R2–R5)
-- `x_projects`: id, group_id, name, description (md), status, priority, target_date, budget, started_at, completed_at, timestamps
-- `x_project_steps`: id, project_id (**FK OK — our own table**), position, title, notes, status (todo/doing/blocked/done/skipped), due_date, est_cost, actual_cost, url (part link), entity_id (nullable), log_as_maintenance (bool), maintenance_entry_id (nullable), completed_at
-- `x_project_entities`: project_id, entity_id (no FK to `entities`, R4)
+## 7. Feature 2: Google Calendar sync for maintenance
 
-### Backend
-- Repo and service scoped by `group_id` from the existing auth context. Authorization reuses upstream `mwRoles(RoleUser)` and the group-role checks, via the adapter.
-- Endpoints under `/api/v1/x/projects`: CRUD, `PATCH steps/reorder`, `POST steps/{id}/complete`, `GET /api/v1/x/entities/{id}/projects`.
-- When a step with `log_as_maintenance` and an `entity_id` is completed, the service creates an upstream maintenance entry through `upstream/maintenance.go` (name = step title, cost = actual_cost, date = now) and stores `maintenance_entry_id`. Upgrade history then shows up on the item's normal maintenance log for free.
-- Steps with a `due_date` feed into Feature 2's calendar as well.
-- Orphan sweeper (daily recurring task): drops `x_project_entities` rows and nulls `entity_id`/`maintenance_entry_id` where the upstream rows no longer exist.
+**Decisions:** one **existing** shared household calendar, chosen from a picker. Completed maintenance **stays on the calendar with ✅**. Homebox is publicly reachable, so OAuth redirects work.
 
-### Frontend (layer)
-- `/x/projects`: board grouped by status, or a list with filters. Cards show a progress bar (done/total steps) and cost vs budget.
-- `/x/projects/[id]`: header, linked items, step checklist (reorder with up/down buttons; no dnd dependency per R6), inline step editing, and a "complete → log maintenance?" toggle.
-- Item page "Projects" tab (seam 3): projects linked to this item, plus "New project for this item".
+**Config (env, `HBOX_X_` prefix)**
+- `HBOX_X_PUBLIC_BASE_URL`, e.g. `https://homebox.example.org`. Used for the OAuth redirect and event deep links.
+- `HBOX_X_GOOGLE_CLIENT_ID`, `HBOX_X_GOOGLE_CLIENT_SECRET`
+- `HBOX_X_SECRET_KEY`: 32-byte base64 key, AES-GCM for refresh tokens at rest. If unset, the feature is disabled and the UI says why.
+- `HBOX_X_GCAL_SYNC_INTERVAL`, default `15m`.
 
-### Milestones
-1. **P0 fork scaffolding** (§1–5): x_register seam, custom migration runner, custom ent client, layer skeleton, i18n merge plugin, seam-guard, CI. *Merge before any feature work.*
-2. **P1** schema + migrations (sqlite + postgres) + repo tests on both DBs.
-3. **P2** service + API + orphan sweeper.
-4. **P3** UI: list/detail pages, nav seam.
-5. **P4** item tab seam + maintenance logging on completion.
+**OAuth**
+- Web-app client. Scopes `https://www.googleapis.com/auth/calendar.events` + `https://www.googleapis.com/auth/calendar.calendarlist.readonly`. `access_type=offline`, `prompt=consent`. State param = signed, short-lived, bound to user + group.
+- Redirect URI: `{PUBLIC_BASE_URL}/api/v1/x/gcal/callback`. This endpoint can't use the Bearer middleware (it's a browser redirect), so it authenticates via the signed state.
+- Consent screen must be **"In production"**. In Testing mode, refresh tokens die after 7 days.
 
----
+**Tables**
+- `x_gcal_connections`: group_id pk, connected_by uuid, google_email, calendar_id, calendar_summary, enc_refresh_token bytea/blob, include_completed bool default true, include_project_steps bool default true, reminder_minutes int default 1440, last_sync_at, last_error text, created_at/updated_at.
+- `x_gcal_links`: id, group_id, source_type (`maintenance|project_step`), source_id uuid, event_id text, content_hash text, synced_at. Unique (group_id, source_type, source_id).
 
-## 7. Feature 2 — Maintenance ↔ Google Calendar
+**Sync engine: reconciliation**
+1. Desired set per group = maintenance entries in the group with `scheduled_date` or `date` set, plus (if enabled) project steps with `due_date`.
+2. Each source maps to an event and a `content_hash`. Diff against `x_gcal_links`: no link → insert; hash changed → patch; link without a source → delete the event (only ours).
+3. Triggers: (a) recurring task every `GCAL_SYNC_INTERVAL`; (b) a runtime ent hook on upstream `MaintenanceEntry` create/update/delete, plus our project-step writes, which enqueue a debounced (~10 s) reconcile for that group; (c) a "Sync now" button. Cascade deletes from item deletion bypass hooks, and (a) covers them.
+4. Rebuild: if links are lost, list events with `privateExtendedProperty=homebox_source=homebox` and re-link by `homebox_id`.
 
-Upstream `MaintenanceEntry` has `scheduled_date` (planned) and `date` (completed). The repo publishes
-**no event-bus events** for maintenance changes, so detecting changes has to happen on our side.
+**Shared-calendar safety (hard requirement):** Homebox only ever patches or deletes events whose ID is in `x_gcal_links` **and** which carry `extendedProperties.private.homebox_source=homebox`. Disconnect offers "remove Homebox events" (deletes only those). It never deletes or clears the calendar.
 
-### Decisions (answered 2026-11-27)
-- Runs on **Unraid** and is reachable from Google through Cloudflare. Production DB is **Postgres**. CI runs custom tests on Postgres first and keeps SQLite as a cheap secondary check, since upstream supports both.
-- Sync into **one existing shared household calendar**. We don't create a calendar. The user picks it from their calendar list.
-- Completed maintenance **stays on the calendar with a ✅**.
+**Event mapping**
+- Scheduled, not completed: all-day on `scheduled_date`. Title `🔧 {item name}: {task}`. Description = task description, est. cost, deep link `{PUBLIC_BASE_URL}/item/{entity_id}/maintenance`. Popup reminder `reminder_minutes`.
+- Completed: all-day on `date`. Title `✅ {item name}: {task}`. Description adds actual cost. No reminders. (Entries logged as completed without a schedule also get a ✅ event, if `include_completed`.)
+- Project step with due date: `📋 {project}: {step}` (✅ when done), linking to `/x/projects/{id}`.
+- Errors: 401 / `invalid_grant` → mark the connection broken and show "Reconnect". 429 / 5xx → exponential backoff. 404/410 on patch → re-insert. Store `last_error`.
 
-### Approach: push sync first, ICS as an optional fallback
-**Stage A — ICS feed (optional, deprioritized now that push sync is the plan):**
-`GET /api/v1/x/calendar/{token}.ics` returns all-day VEVENTs for scheduled, not-completed
-maintenance plus project steps with a due date. Each event has a stable `UID` (`<entry-id>@homebox`)
-and a link back to `/item/{id}/maintenance`. The token is per group, random, revocable, and stored hashed.
-You subscribe in Google Calendar via "From URL".
-- Upside: no OAuth, works with any calendar app.
-- Downside: Google refreshes subscribed feeds only every ~8–24 h, the feed is one-way, and the URL must be reachable from Google. Behind a Cloudflare tunnel with Access, that means a bypass policy for only `/api/v1/x/calendar/*`.
+**UI:** `/x/calendar` settings page (link from the Projects page header and from nav). Includes Connect Google, connected account, calendar picker (calendarList filtered to `accessRole` writer/owner), options, last sync and last error, Sync now, and Disconnect (with optional "remove Homebox events").
 
-**Stage B — Push sync via Calendar API (the real feature):**
-- **OAuth:** you use your own Google Cloud OAuth client (Web app). Scopes: `calendar.events` (write events on the existing shared calendar) + `calendar.calendarlist.readonly` (to show a picker). Redirect: `https://<homebox-host>/api/v1/x/gcal/callback`. Uses `golang.org/x/oauth2`, already a dep, plus a hand-written REST client (no `google.golang.org/api` direct dep, R6).
-- **Shared-calendar safety:** the calendar holds other household events, so Homebox **only ever touches events it created**. Each one is tagged `extendedProperties.private.homebox_id` + `homebox_source`. Reconcile and rebuild query with `privateExtendedProperty=homebox_source=…`, and deletes are restricted to IDs in `x_gcal_links`. Disconnecting offers "remove Homebox events", never "delete calendar".
-  - ⚠️ Set the consent screen to **"In production"** (unverified is fine for personal use). In "Testing" mode, refresh tokens expire after 7 days.
-- **Config (own env, `HBOX_X_` prefix):** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `PUBLIC_BASE_URL` (for redirect and event links), `SECRET_KEY` (AES-GCM for refresh tokens at rest).
-- **Tables:** `x_gcal_connections` (group_id, connected_by_user, calendar_id, enc_refresh_token, options: include_completed / reminder_minutes / include_project_steps, last_sync_at, last_error) and `x_gcal_links` (source_type `maintenance|project_step`, source_id, group_id, event_id, content_hash, synced_at).
-- **Sync = reconciliation, not event-driven:**
-  1. A recurring task (every 15 min, `NewTask` pattern from `recurring.go`) runs per connected group. It loads the desired set (scheduled maintenance + optional completed + project steps), hashes each one, and diffs against `x_gcal_links`: insert / patch / delete. Each event carries `extendedProperties.private.homebox_id`, so a lost link table can be rebuilt by listing the calendar.
-  2. For a near-instant update, a **runtime ent hook** (`client.MaintenanceEntry.Use(...)`, registered in `registerCustom`, no codegen) triggers a debounced reconcile for that group after any create, update or delete. Cascade deletes from item deletion skip hooks, and step 1 covers those.
-- **Event shape:** all-day on `scheduled_date`, title `🔧 {item}: {task}`, description = notes + cost + deep link, popup reminder from the options. **When completed:** retitle it `✅ {item}: {task}`, move it to the completion `date`, drop the reminder, and add the actual cost. It stays on the calendar as history. Entries logged directly as completed (no schedule) also get a `✅` event on their `date`.
-- **Failure handling:** treat 401/invalid_grant as "disconnected" and show it in the UI. Back off on 429/5xx. `last_error` is shown on the settings page.
-- **UI (layer):** `/collection/x-calendar` settings page, linked from the existing collection settings via a small layer-provided link (or the nav seam). It has Connect Google, calendar status, options, "Sync now", the ICS URL with regenerate, and Disconnect (optionally deleting the calendar).
-- **Later (not v1):** two-way sync, where deleting or moving an event in Google updates Homebox, via `events.watch` push channels. That needs a public HTTPS webhook. Also maintenance recurrence (upstream has none).
+**Later / optional:** read-only ICS feed (`/api/v1/x/calendar/{token}.ics`); two-way sync via `events.watch`; recurring maintenance.
 
-### Milestones
-1. **G1** Settings page + OAuth connect/disconnect + encrypted token store + existing-calendar picker.
-2. **G2** (optional) ICS feed as a read-only fallback.
-3. **G3** Reconciler + recurring task + ent hook + REST client with tests against an `httptest` fake Google.
-4. **G4** Project-step events (needs P2) + options UI + error surfacing.
+## 8. Deployment (Unraid)
 
----
-
-## 8. Suggested order and sizing
-
-| Order | Work | Rough size |
-|-------|------|-----------|
-| 1 | P0 scaffolding + CI + seam guard | 1 PR, medium |
-| 2 | P1–P3 Projects core | 2–3 PRs |
-| 3 | G1 + G3 Calendar push sync (G2 ICS only if wanted) | 2 PRs |
-| 5 | P4 + G4 integrations | 1 PR |
-
-Each PR targets `custom` and must be green on `x-ci` + `x-seam-guard`.
-
-## 9. Answered
-Unraid · reachable via Cloudflare · Postgres · completed stays with ✅ · one existing shared household calendar. See §7 "Decisions".
-
-Remaining before G1: the public hostname for the OAuth redirect, and creating the Google Cloud OAuth client (consent screen "In production").
+- Image: `ghcr.io/salthepal/homebox:custom` (pin to `:custom-<sha>` when you want to hold a version).
+- Add the env vars from §7 to the Unraid template, alongside the existing Homebox/Postgres vars.
+- Cloudflare: the OAuth callback is a normal browser request from the logged-in user, so no Access bypass is needed. (Only the optional ICS feed would need one, for `/api/v1/x/calendar/*`.)
+- **Back up Postgres before the first deploy of each task that adds migrations.** Custom migrations are forward-only.
