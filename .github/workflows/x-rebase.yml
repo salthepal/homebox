@@ -1,0 +1,147 @@
+# Fork-only: rebases custom onto main and verifies it.
+#   - schedule (weekly): canary — trial rebase + checks, never pushes. Opens/updates a
+#     `rebase-break` issue on failure, closes it on success.
+#   - workflow_dispatch: same, and if `push` is true and everything passes, force-pushes custom
+#     with --force-with-lease using SYNC_TOKEN (admin PAT, bypasses the custom ruleset).
+name: x-rebase
+
+on:
+  schedule:
+    - cron: '43 10 * * 1'
+  workflow_dispatch:
+    inputs:
+      push:
+        description: "Force-push the rebased custom branch if all checks pass"
+        type: boolean
+        default: false
+
+concurrency:
+  group: x-rebase
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  rebase:
+    if: github.repository == 'salthepal/homebox'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: homebox
+          POSTGRES_PASSWORD: homebox
+          POSTGRES_DB: homebox_x_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DO_PUSH: ${{ github.event_name == 'workflow_dispatch' && inputs.push }}
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          ref: custom
+          fetch-depth: 0
+          # PAT so the final push can bypass the ruleset and update workflow files.
+          token: ${{ secrets.SYNC_TOKEN || github.token }}
+
+      - name: Rebase custom onto main
+        id: rebase
+        run: |
+          set -uo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          old=$(git rev-parse HEAD)
+          echo "old=$old" >> "$GITHUB_OUTPUT"
+          behind=$(git rev-list --count HEAD..origin/main)
+          echo "custom is $behind commit(s) behind main" | tee -a "$GITHUB_STEP_SUMMARY"
+          if git rebase origin/main; then
+            echo "new=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          else
+            conflicts=$(git diff --name-only --diff-filter=U)
+            git rebase --abort
+            {
+              echo "FAIL_STEP=rebase conflict"
+              echo "FAIL_DETAIL<<EOF"; echo "Conflicting files:"; echo "$conflicts"; echo "EOF"
+            } >> "$GITHUB_ENV"
+            exit 1
+          fi
+
+      - name: Seam guard
+        run: bash .fork/seam-guard.sh origin/main || { echo "FAIL_STEP=seam guard" >> "$GITHUB_ENV"; exit 1; }
+
+      - name: Set up Go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c
+        with:
+          go-version: "1.27"
+          cache-dependency-path: backend/go.mod
+
+      - name: Backend build + custom tests
+        working-directory: backend
+        env:
+          TEST_X_PG_DSN: postgres://homebox:homebox@localhost:5432/homebox_x_test?sslmode=disable
+        run: |
+          set -e
+          trap 'echo "FAIL_STEP=backend build/tests" >> "$GITHUB_ENV"' ERR
+          go build ./...
+          if [ -d internal/custom ]; then
+            go vet ./internal/custom/...
+            go test -count=1 ./internal/custom/...
+            go test -count=1 -run 'X|Custom' ./app/api/
+            TEST_X_DB=postgres go test -count=1 -p 1 ./internal/custom/...
+          fi
+
+      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061
+        with:
+          version: 10
+
+      - name: Frontend typecheck
+        working-directory: frontend
+        run: |
+          set -e
+          trap 'echo "FAIL_STEP=frontend typecheck" >> "$GITHUB_ENV"' ERR
+          pnpm install --frozen-lockfile
+          pnpm run typecheck
+
+      - name: Push rebased custom
+        if: env.DO_PUSH == 'true'
+        env:
+          OLD: ${{ steps.rebase.outputs.old }}
+          NEW: ${{ steps.rebase.outputs.new }}
+          HAS_PAT: ${{ secrets.SYNC_TOKEN != '' }}
+        run: |
+          if [ "$OLD" = "$NEW" ]; then echo "Already up to date; nothing to push." | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          [ "$HAS_PAT" = "true" ] || { echo "::error::SYNC_TOKEN not set; cannot push past the custom ruleset."; echo "FAIL_STEP=push (no SYNC_TOKEN)" >> "$GITHUB_ENV"; exit 1; }
+          git push --force-with-lease="custom:$OLD" origin HEAD:custom || { echo "FAIL_STEP=push" >> "$GITHUB_ENV"; exit 1; }
+          echo "Pushed custom: $OLD → $NEW" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Open or update rebase-break issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh label create rebase-break --color B60205 --description "custom no longer rebases cleanly onto main" --force >/dev/null || true
+          title="custom does not rebase cleanly onto main"
+          body=$(printf 'Failed step: **%s**\n\n%s\n\nRun: %s/%s/actions/runs/%s\n\nFix locally with `.fork/rebase.sh` (see TASKS.md → Rebase procedure).' \
+            "${FAIL_STEP:-unknown}" "${FAIL_DETAIL:-}" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
+          num=$(gh issue list --label rebase-break --state open --search "in:title \"$title\"" --json number -q '.[0].number')
+          if [ -n "$num" ]; then gh issue comment "$num" --body "$body"; else gh issue create --title "$title" --label rebase-break --body "$body"; fi
+
+      - name: Close rebase-break issue
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          title="custom does not rebase cleanly onto main"
+          for n in $(gh issue list --label rebase-break --state open --search "in:title \"$title\"" --json number -q '.[].number'); do
+            gh issue close "$n" --comment "Rebase onto main is clean and checks pass as of run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
+          done

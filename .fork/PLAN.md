@@ -27,7 +27,7 @@ x/<feature> ──draft PR, squash-merge──▶ custom  (default branch, deplo
 | `custom` | `main` + our commits on top. **Default branch.** Deploy source. | Squash merges from `x/*` PRs, plus force-push after a rebase. |
 | `x/<feature>` | One task from TASKS.md = one branch = one PR into `custom`. | Agents/you. Deleted on merge. |
 
-- **Rebasing custom onto main:** run periodically (after a sync brings new upstream commits, at least monthly). A weekly canary does a trial run and opens an issue if it breaks. Use `git rebase main`, never `git merge main`. That keeps our delta as a clean stack of feature commits on top of upstream.
+- **Rebasing custom onto main:** run periodically (after a sync brings new upstream commits, at least monthly). A weekly scheduled run of `x-rebase` does a trial run (no push) and opens a `rebase-break` issue if it breaks. Use `git rebase main`, never `git merge main`. That keeps our delta as a clean stack of feature commits on top of upstream.
 - After a rebase, `custom` is force-pushed (`--force-with-lease`). Any open `x/*` branch must then be re-based: `git rebase --onto origin/custom <old-custom-sha> x/<feature>`.
 - Squash-merge every PR with a conventional prefix (`x(projects): …`, `x(gcal): …`, `x(fork): …`). One commit per feature step makes rebase conflicts small and attributable.
 

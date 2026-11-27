@@ -1,0 +1,83 @@
+# Fork-only CI for the custom branch. Reuses upstream's partial workflows unchanged (R9)
+# and adds custom-code tests on SQLite and Postgres (R11).
+name: x-ci
+
+on:
+  push:
+    branches: [ "custom" ]
+    paths-ignore:
+      - '.fork/**'
+      - '.claude/**'
+      - 'docs/**'
+  # No paths filter on PRs: once these checks are required, a skipped run would block the merge.
+  pull_request:
+    branches: [ "custom" ]
+  workflow_dispatch:
+
+concurrency:
+  group: x-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  backend:
+    if: github.repository == 'salthepal/homebox'
+    uses: ./.github/workflows/partial-backend.yaml
+
+  frontend:
+    if: github.repository == 'salthepal/homebox'
+    uses: ./.github/workflows/partial-frontend.yaml
+
+  custom-go:
+    name: custom Go (sqlite + postgres)
+    if: github.repository == 'salthepal/homebox'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: homebox
+          POSTGRES_PASSWORD: homebox
+          POSTGRES_DB: homebox_x_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+
+      - name: Set up Go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c
+        with:
+          go-version: "1.27"
+          cache-dependency-path: backend/go.mod
+
+      - name: Build
+        working-directory: backend
+        run: go build ./...
+
+      - name: Custom tests (SQLite)
+        working-directory: backend
+        run: |
+          if [ ! -d internal/custom ]; then echo "no custom backend code yet"; exit 0; fi
+          go vet ./internal/custom/...
+          go test -count=1 ./internal/custom/...
+          go test -count=1 -run 'X|Custom' ./app/api/
+
+      - name: Custom tests (Postgres)
+        working-directory: backend
+        env:
+          TEST_X_DB: postgres
+          TEST_X_PG_DSN: postgres://homebox:homebox@localhost:5432/homebox_x_test?sslmode=disable
+        run: |
+          if [ ! -d internal/custom ]; then echo "no custom backend code yet"; exit 0; fi
+          go test -count=1 -p 1 ./internal/custom/...
+          go test -count=1 -p 1 -run 'X|Custom' ./app/api/

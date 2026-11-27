@@ -17,18 +17,19 @@ Local checks used below:
 
 ## Phase F — fork foundation
 
-### [ ] F1 · Guardrail scripts + CI
+### [x] F1 · Guardrail scripts + CI
 Create:
 - `.fork/seam-guard.sh`: computes `git diff --name-only $(git merge-base origin/main HEAD)..HEAD`. Fails if any path is not custom-owned (PLAN §3 globs) and not listed in `.fork/SEAMS.txt`. **Always** fails on `backend/go.mod`, `backend/go.sum`, `frontend/package.json`, `frontend/pnpm-lock.yaml`, `frontend/locales/**`, `backend/internal/data/ent/**`, `backend/internal/data/migrations/**`, `backend/app/api/static/docs/**`, `frontend/lib/api/types/**`, `.github/workflows/<non x->*`. For seam files, warns if the diff for that file is more than 6 changed lines.
 - `.github/workflows/x-seam-guard.yml`: on PR → custom and push → custom. `fetch-depth: 0`, fetch `main`, run the script. Job id `guard`.
 - `.github/workflows/x-ci.yml`: on PR → custom and push → custom. Jobs: `backend` = `uses: ./.github/workflows/partial-backend.yaml`; `frontend` = `uses: ./.github/workflows/partial-frontend.yaml`; `custom-go` = setup-go 1.27, Postgres 17 service, runs `go test ./internal/custom/... ./app/api/ -run 'X|Custom'` twice (SQLite, then `TEST_X_DB=postgres`). Copy pinned action SHAs from upstream workflows. If a partial workflow needs secrets or inputs, pass them through. Don't edit the partials.
 - `.github/workflows/x-sync-main.yml`: daily cron (`17 9 * * *`) + `workflow_dispatch`. Uses `SYNC_TOKEN`. `POST /repos/salthepal/homebox/merge-upstream {"branch":"main"}` (via `gh api`). On HTTP 409 (diverged), open a `rebase-break` issue: "main diverged from upstream".
-- `.github/workflows/x-rebase-canary.yml`: weekly cron (`43 10 * * 1`) + dispatch. Checkout `custom` with full history and fetch `main`. Set git identity. `git rebase origin/main`. On success, run BE + FE checks. On any failure, create or update a single open issue labelled `rebase-break` with the conflicting files (`git diff --name-only --diff-filter=U`) and the failing step. On success, close any open `rebase-break` issue with a comment. Never pushes.
-- `.github/workflows/x-rebase.yml`: `workflow_dispatch` only. Same as the canary, but on full success `git push --force-with-lease=custom:<pre-rebase-sha> origin HEAD:custom` using `SYNC_TOKEN`. On failure it behaves like the canary.
+- `.github/workflows/x-rebase.yml` (canary and rebase in one workflow): the weekly cron (`43 10 * * 1`) runs a trial rebase onto `main` + seam guard + backend build/custom tests (SQLite + Postgres) + frontend typecheck, and never pushes. On failure it opens or updates one `rebase-break` issue with the failing step and conflicting files, and on success it closes that issue. `workflow_dispatch` with `push: true` does the same, then `git push --force-with-lease=custom:<old>` using `SYNC_TOKEN`.
 - `.fork/rebase.sh`: the local equivalent (fetch upstream → ff `main` → `git rebase main` on custom → checks → prints `git push --force-with-lease` for you to run). Uses rerere.
 - Every `x-*` workflow job: `if: github.repository == 'salthepal/homebox'`, plus minimal `permissions:`.
 
 **Done when:** workflows pass on the PR. The seam guard fails a throwaway commit that touches `frontend/locales/en.json` (show this in the PR description, then revert). `x-sync-main` dispatch succeeds once.
+
+**Status (2026-11-27):** built and pushed directly to `custom` (the rulesets weren't applied yet). Seam guard verified locally: it passes on `custom`, and a throwaway commit touching `frontend/locales/`, `README.md` and `pull-requests.yaml` failed while an `[id]` seam path passed. `x-ci` / `x-seam-guard` run on push. **Pending owner setup:** `x-sync-main` and `x-rebase` dispatch need the default branch switched to `custom` (dispatch and schedules use the default branch), and pushing needs `SYNC_TOKEN`. Verify both after running `apply-repo-settings.sh`.
 
 ### [ ] F2 · Backend scaffolding
 - `backend/internal/custom/config`: `Load() (Config, error)` with ardanlabs/conf, prefix `HBOX_X`. Fields: PublicBaseURL, GoogleClientID, GoogleClientSecret, SecretKey (base64 → 32 bytes, validated), GcalSyncInterval (default 15m). Add `GcalEnabled()`.
@@ -101,7 +102,7 @@ Per-group revocable token (stored hashed), `GET /api/v1/x/calendar/{token}.ics`,
 
 ---
 
-## Rebase procedure (when the canary or x-rebase fails)
+## Rebase procedure (when x-rebase fails or opens a `rebase-break` issue)
 1. `.fork/rebase.sh` locally (rerere on).
 2. Conflicts should only be in SEAMS.txt files. Re-apply the one-line spread/call into upstream's new version of the code.
 3. A compile error in `internal/custom/upstream/*` means upstream changed an API. Fix it in the adapter only.

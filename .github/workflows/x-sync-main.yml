@@ -1,0 +1,46 @@
+# Fork-only: fast-forwards main from sysadminsmedia/homebox daily.
+# Uses SYNC_TOKEN (fine-grained PAT with Contents+Workflows RW) because GITHUB_TOKEN cannot
+# update branches when upstream commits touch .github/workflows/*. Falls back to GITHUB_TOKEN.
+name: x-sync-main
+
+on:
+  schedule:
+    - cron: '17 9 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  sync:
+    if: github.repository == 'salthepal/homebox'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge upstream into main (fast-forward)
+        env:
+          GH_TOKEN: ${{ secrets.SYNC_TOKEN || secrets.GITHUB_TOKEN }}
+          HAS_PAT: ${{ secrets.SYNC_TOKEN != '' }}
+        run: |
+          set -uo pipefail
+          [ "$HAS_PAT" = "true" ] || echo "::warning::SYNC_TOKEN not set; using GITHUB_TOKEN (fails if upstream changed workflows)"
+          out=$(gh api -X POST "repos/${GITHUB_REPOSITORY}/merge-upstream" -f branch=main 2>&1); rc=$?
+          echo "$out"
+          if [ $rc -eq 0 ]; then
+            echo "### main synced" >> "$GITHUB_STEP_SUMMARY"; echo "$out" >> "$GITHUB_STEP_SUMMARY"; exit 0
+          fi
+          echo "SYNC_ERROR<<EOF" >> "$GITHUB_ENV"; echo "$out" >> "$GITHUB_ENV"; echo "EOF" >> "$GITHUB_ENV"
+          exit 1
+
+      - name: Report failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh label create rebase-break --color B60205 --description "custom no longer rebases cleanly onto main" --force >/dev/null || true
+          title="main could not be synced from upstream"
+          body=$(printf 'Run: %s/%s/actions/runs/%s\n\n```\n%s\n```\n\nIf main diverged (409), main has commits upstream does not: inspect, then reset main to upstream with the "Sync fork → Discard commits" button.\nIf this is a permissions error, check SYNC_TOKEN (Contents + Workflows RW).' \
+            "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "${SYNC_ERROR:-see run log}")
+          num=$(gh issue list --label rebase-break --state open --search "in:title \"$title\"" --json number -q '.[0].number')
+          if [ -n "$num" ]; then gh issue comment "$num" --body "$body"; else gh issue create --title "$title" --label rebase-break --body "$body"; fi

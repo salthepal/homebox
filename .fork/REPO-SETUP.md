@@ -77,6 +77,6 @@ git config rerere.autoupdate true
 | When | What |
 |------|------|
 | Daily (auto) | `x-sync-main` fast-forwards `main` from upstream. |
-| Weekly (auto) | `x-rebase-canary` trial-rebases `custom` onto `main` and runs tests. On failure it opens or updates a `rebase-break` issue. |
-| After upstream changes you want, ~monthly | Run **x-rebase** (Actions → Run workflow), or `.fork/rebase.sh` locally. Clean + green → it force-pushes `custom`. Otherwise fix conflicts locally (see TASKS.md "Rebase procedure"). |
+| Weekly (auto) | `x-rebase` (scheduled run = canary, no push) trial-rebases `custom` onto `main` and runs tests. On failure it opens or updates a `rebase-break` issue. |
+| After upstream changes you want, ~monthly | Run **x-rebase** with `push: true` (Actions → Run workflow), or `.fork/rebase.sh` locally. Clean + green → it force-pushes `custom`. Otherwise fix conflicts locally (see TASKS.md "Rebase procedure"). |
 | After each merge to `custom` | `x-docker` publishes `:custom` → update the container in Unraid. |
