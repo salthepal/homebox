@@ -8,7 +8,7 @@
 5. Never push to `main`. Never edit upstream files except the seams listed in `.fork/SEAMS.txt`. If you think a new seam is needed, stop and ask. Don't add one silently.
 
 Local checks used below:
-- **BE:** `cd backend && go build ./... && go vet ./internal/custom/... ./app/api/ && go test ./internal/custom/... ./app/api/ -run 'X|Custom'`
+- **BE:** `cd backend && go build ./... && go vet ./internal/custom/... ./app/api/ && go test ./internal/custom/... ./app/api/ -run '^TestCustom'`
 - **BE-PG:** same tests with `TEST_X_DB=postgres` against `docker run --rm -e POSTGRES_PASSWORD=pg -p 5432:5432 postgres:17` (connection string from `TEST_X_PG_DSN`, default `postgres://postgres:pg@localhost:5432/postgres?sslmode=disable`)
 - **FE:** `cd frontend && pnpm install --frozen-lockfile && pnpm run lint && pnpm run typecheck` (see `frontend/package.json` for exact script names)
 - **SEAM:** `.fork/seam-guard.sh` exits 0
@@ -21,7 +21,7 @@ Local checks used below:
 Create:
 - `.fork/seam-guard.sh`: computes `git diff --name-only $(git merge-base origin/main HEAD)..HEAD`. Fails if any path is not custom-owned (PLAN §3 globs) and not listed in `.fork/SEAMS.txt`. **Always** fails on `backend/go.mod`, `backend/go.sum`, `frontend/package.json`, `frontend/pnpm-lock.yaml`, `frontend/locales/**`, `backend/internal/data/ent/**`, `backend/internal/data/migrations/**`, `backend/app/api/static/docs/**`, `frontend/lib/api/types/**`, `.github/workflows/<non x->*`. For seam files, warns if the diff for that file is more than 6 changed lines.
 - `.github/workflows/x-seam-guard.yml`: on PR → custom and push → custom. `fetch-depth: 0`, fetch `main`, run the script. Job id `guard`.
-- `.github/workflows/x-ci.yml`: on PR → custom and push → custom. Jobs: `backend` = `uses: ./.github/workflows/partial-backend.yaml`; `frontend` = `uses: ./.github/workflows/partial-frontend.yaml`; `custom-go` = setup-go 1.27, Postgres 17 service, runs `go test ./internal/custom/... ./app/api/ -run 'X|Custom'` twice (SQLite, then `TEST_X_DB=postgres`). Copy pinned action SHAs from upstream workflows. If a partial workflow needs secrets or inputs, pass them through. Don't edit the partials.
+- `.github/workflows/x-ci.yml`: on PR → custom and push → custom. Jobs: `backend` = `uses: ./.github/workflows/partial-backend.yaml`; `frontend` = `uses: ./.github/workflows/partial-frontend.yaml`; `custom-go` = setup-go 1.27, Postgres 17 service, runs `go test ./internal/custom/... ./app/api/ -run '^TestCustom'` twice (SQLite, then `TEST_X_DB=postgres`). Copy pinned action SHAs from upstream workflows. If a partial workflow needs secrets or inputs, pass them through. Don't edit the partials.
 - `.github/workflows/x-sync-main.yml`: daily cron (`17 9 * * *`) + `workflow_dispatch`. Uses `SYNC_TOKEN`. `POST /repos/salthepal/homebox/merge-upstream {"branch":"main"}` (via `gh api`). On HTTP 409 (diverged), open a `rebase-break` issue: "main diverged from upstream".
 - `.github/workflows/x-rebase.yml` (canary and rebase in one workflow): the weekly cron (`43 10 * * 1`) runs a trial rebase onto `main` + seam guard + backend build/custom tests (SQLite + Postgres) + frontend typecheck, and never pushes. On failure it opens or updates one `rebase-break` issue with the failing step and conflicting files, and on success it closes that issue. `workflow_dispatch` with `push: true` does the same, then `git push --force-with-lease=custom:<old>` using `SYNC_TOKEN`.
 - `.fork/rebase.sh`: the local equivalent (fetch upstream → ff `main` → `git rebase main` on custom → checks → prints `git push --force-with-lease` for you to run). Uses rerere.
@@ -31,7 +31,7 @@ Create:
 
 **Status (2026-11-27):** built and pushed directly to `custom` (the rulesets weren't applied yet). Seam guard verified locally: it passes on `custom`, and a throwaway commit touching `frontend/locales/`, `README.md` and `pull-requests.yaml` failed while an `[id]` seam path passed. `x-ci` / `x-seam-guard` run on push. **Pending owner setup:** `x-sync-main` and `x-rebase` dispatch need the default branch switched to `custom` (dispatch and schedules use the default branch), and pushing needs `SYNC_TOKEN`. Verify both after running `apply-repo-settings.sh`.
 
-### [ ] F2 · Backend scaffolding
+### [x] F2 · Backend scaffolding
 - `backend/internal/custom/config`: `Load() (Config, error)` with ardanlabs/conf, prefix `HBOX_X`. Fields: PublicBaseURL, GoogleClientID, GoogleClientSecret, SecretKey (base64 → 32 bytes, validated), GcalSyncInterval (default 15m). Add `GcalEnabled()`.
 - `backend/internal/custom/migrations`: `//go:embed` for `postgres/*.sql` and `sqlite3/*.sql`, and `Run(ctx, db *sql.DB, driver string) error` using `goose.NewProvider` with a store on table **`x_goose_db_version`** (see PLAN §5; check the goose v3.29 API for how `WithStore` interacts with the dialect argument). First migration `00001_x_init.sql` (both dialects): `CREATE TABLE x_meta (key text primary key, value text)`. Use sequential numbering (`00001_…`), not timestamps. Our table is independent, so order only matters among our own files.
 - `backend/internal/custom/ent`: `generate.go` (`go run -mod=mod entgo.io/ent/cmd/ent generate ./schema`), schema dir with an `XMeta` schema matching the migration. Commit the generated code. `Open(driver, db *sql.DB) *ent.Client` using `entsql.OpenDB`.
@@ -41,6 +41,8 @@ Create:
 - Tests: migrations apply twice idempotently on SQLite **and** Postgres, and coexist with upstream migrations (run upstream `goose.Up` first, then ours). A router test shows `/api/v1/status` and authed `/api/v1/x/ping` both route correctly.
 
 **Done when:** BE + BE-PG + SEAM pass. The container starts against Postgres, and the log shows custom migrations applied.
+
+**Status (2026-11-27):** done. Tests pass on SQLite and Postgres 16. A real server binary against Postgres served `/api/v1/status` 200, `/api/v1/x/ping` 401 without a token and 200 with one, and `x_goose_db_version` held version 1. The seam is 3 lines (an `if err := registerCustom(...); err != nil { return err }`) because upstream lint forbids `log.Fatal`.
 
 ### [ ] F3 · Frontend layer scaffolding
 - `frontend/layers/custom/nuxt.config.ts` (minimal `defineNuxtConfig({})`). Confirm Nuxt picks the layer up automatically; if it doesn't, stop and report rather than editing `frontend/nuxt.config.ts`.
@@ -110,4 +112,10 @@ Per-group revocable token (stored hashed), `GET /api/v1/x/calendar/{token}.ics`,
 5. Run BE, BE-PG, FE and SEAM, then `git push --force-with-lease origin custom`. Close the `rebase-break` issue.
 
 ## Notes for later tasks
-- (append here)
+- **Test naming:** tests in `backend/app/api` must be named `TestCustom*` (CI runs `-run '^TestCustom'` there). Everything under `internal/custom/...` runs in full.
+- **Test DBs:** use `xtest.Open(t)` + `xtest.UpstreamMigrate(t, d)` + `migrations.Run`. On Postgres each test gets its own database, because upstream migrations hard-code `public.`. The DSN user needs CREATEDB.
+- **goose:** our provider uses `WithDisableGlobalRegistry(true)`, because `app/api/main.go` imports upstream's Go migrations, which register globally. Custom migrations are SQL only, numbered `0000N_x_<name>.sql`, in both `postgres/` and `sqlite3/`.
+- **ent:** `go generate ./internal/custom/ent` modifies `backend/go.sum` (the generator's own deps). Always `git checkout -- backend/go.sum backend/go.mod` afterwards. The generated code builds without them.
+- **Lint:** upstream golangci-lint (run by x-ci's `backend` job) covers our code too: no `log.Fatal`, no `init()`, testifylint rules apply.
+- **Local server run:** needs `HBOX_AUTH_API_KEY_PEPPER` (≥32 bytes) or it panics at startup.
+- **Local Postgres in a cloud session:** `/usr/lib/postgresql/16/bin/initdb` + `pg_ctl` as the `postgres` user, data dir under `/var/tmp`. `TEST_X_PG_DSN=postgres://postgres@localhost:5432/postgres?sslmode=disable`.

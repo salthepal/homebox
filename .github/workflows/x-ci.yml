@@ -70,7 +70,7 @@ jobs:
           if [ ! -d internal/custom ]; then echo "no custom backend code yet"; exit 0; fi
           go vet ./internal/custom/...
           go test -count=1 ./internal/custom/...
-          go test -count=1 -run 'X|Custom' ./app/api/
+          go test -count=1 -run '^TestCustom' ./app/api/
 
       - name: Custom tests (Postgres)
         working-directory: backend
@@ -80,4 +80,4 @@ jobs:
         run: |
           if [ ! -d internal/custom ]; then echo "no custom backend code yet"; exit 0; fi
           go test -count=1 -p 1 ./internal/custom/...
-          go test -count=1 -p 1 -run 'X|Custom' ./app/api/
+          go test -count=1 -p 1 -run '^TestCustom' ./app/api/

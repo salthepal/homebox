@@ -242,6 +242,9 @@ func run(cfg *config.Config) error {
 	app.mountRoutes(router, chain, app.repos)
 
 	runner := graceful.NewRunner()
+	if err := registerCustom(app, cfg, router, chain, runner); err != nil { // fork seam: .fork/SEAMS.txt
+		return err
+	}
 
 	// Add OpenTelemetry shutdown
 	if otelProvider.IsEnabled() {
