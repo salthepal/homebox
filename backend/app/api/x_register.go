@@ -44,7 +44,9 @@ func registerCustom(a *app, cfg *config.Config, router *chi.Mux, chain *errchain
 	log.Info().Ints64("applied", applied).Msg("custom migrations up to date")
 
 	xc := xent.NewClient(xent.Driver(entsql.OpenDB(dialect, db)))
-	mountCustomRoutes(a, router, chain, xapi.Deps{Ent: xc, Config: xcfg})
+	deps := xapi.Deps{Ent: xc, Config: xcfg}
+	registerCustomGcal(a, xcfg, xc, runner, &deps)
+	mountCustomRoutes(a, router, chain, deps)
 
 	if missing := xcfg.GcalMissing(); len(missing) > 0 {
 		log.Info().Strs("missing", missing).Msg("google calendar sync disabled")

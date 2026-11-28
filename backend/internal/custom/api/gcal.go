@@ -21,19 +21,44 @@ import (
 // authenticated by the signed, expiring state value instead.
 func mountGcal(r chi.Router, chain *errchain.ErrChain, userMW []errchain.Middleware, d Deps) {
 	svc := gcal.New(d.Ent, d.Config, d.Gcal)
-	h := &gcalHandlers{svc: svc, baseURL: d.Config.PublicBaseURL}
+	h := &gcalHandlers{svc: svc, baseURL: d.Config.PublicBaseURL, rec: d.GcalReconciler}
 
 	r.Get("/gcal/status", chain.ToHandlerFunc(h.status, userMW...))
 	r.Post("/gcal/connect", chain.ToHandlerFunc(h.connect, userMW...))
 	r.Get("/gcal/calendars", chain.ToHandlerFunc(h.calendars, userMW...))
 	r.Put("/gcal/settings", chain.ToHandlerFunc(h.settings, userMW...))
 	r.Post("/gcal/disconnect", chain.ToHandlerFunc(h.disconnect, userMW...))
+	r.Post("/gcal/sync", chain.ToHandlerFunc(h.sync, userMW...))
 	r.Get("/gcal/callback", h.callback) // deliberately no userMW
 }
 
 type gcalHandlers struct {
 	svc     *gcal.Service
 	baseURL string
+	rec     *gcal.Reconciler
+}
+
+// syncResponse is returned by "Sync now": what changed, plus the refreshed status (last sync
+// time and error) for the settings page.
+type syncResponse struct {
+	Result gcal.Result `json:"result"`
+	Status gcal.Status `json:"status"`
+}
+
+func (h *gcalHandlers) sync(w http.ResponseWriter, r *http.Request) error {
+	auth := services.NewContext(r.Context())
+	if h.rec == nil {
+		return validate.NewRequestError(errors.New("google calendar sync is not available"), http.StatusConflict)
+	}
+	res, err := h.rec.Reconcile(r.Context(), auth.GID)
+	if err != nil {
+		return gcalError(err)
+	}
+	st, err := h.svc.Status(r.Context(), auth.GID)
+	if err != nil {
+		return err
+	}
+	return server.JSON(w, http.StatusOK, syncResponse{Result: res, Status: st})
 }
 
 func (h *gcalHandlers) status(w http.ResponseWriter, r *http.Request) error {
@@ -141,6 +166,8 @@ func gcalError(err error) error {
 		return validate.NewRequestError(errors.New("google connection is broken, reconnect Google Calendar"), http.StatusConflict)
 	case errors.Is(err, gcal.ErrInvalidSetting):
 		return validate.NewRequestError(err, http.StatusBadRequest)
+	case errors.Is(err, gcal.ErrCalendarNotSet):
+		return validate.NewRequestError(errors.New("choose a calendar first"), http.StatusConflict)
 	}
 	var ae *gcal.APIError
 	if errors.As(err, &ae) {

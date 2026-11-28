@@ -48,6 +48,7 @@
 
   const connecting = ref(false);
   const saving = ref(false);
+  const syncing = ref(false);
   const disconnecting = ref(false);
   const disconnectOpen = ref(false);
   const removeEvents = ref(false);
@@ -140,6 +141,25 @@
     }
     applyStatus(resp.data);
     toast.success(t("x.calendar.saved"));
+  }
+
+  async function syncNow() {
+    syncing.value = true;
+    const resp = await api.gcalSync();
+    syncing.value = false;
+    if (resp.error) {
+      toast.error(resp.data?.error ?? t("x.calendar.sync_failed"));
+      // A failed or broken sync is recorded server-side: refresh to show last error / Reconnect.
+      await loadStatus(false);
+      return;
+    }
+    const r = resp.data.result;
+    if (r.inserted + r.patched + r.deleted === 0) {
+      toast.success(t("x.calendar.synced_nothing"));
+    } else {
+      toast.success(t("x.calendar.synced", { added: r.inserted, updated: r.patched, removed: r.deleted }));
+    }
+    status.value = resp.data.status;
   }
 
   async function disconnect() {
@@ -315,6 +335,18 @@
             <p v-if="status.last_error" class="text-destructive">
               <span class="font-medium">{{ t("x.calendar.last_error") }}:</span> {{ status.last_error }}
             </p>
+            <div class="pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                :disabled="syncing || !status.calendar_id"
+                data-testid="x-gcal-sync-now"
+                @click="syncNow"
+              >
+                <MdiLoading v-if="syncing" class="mr-2 inline-block animate-spin" />
+                {{ syncing ? t("x.calendar.syncing") : t("x.calendar.sync_now") }}
+              </Button>
+            </div>
           </div>
         </div>
       </template>

@@ -23,6 +23,9 @@ type Deps struct {
 	Config xconfig.Config
 	// Gcal overrides Google endpoints (tests point these at a fake); zero = real Google.
 	Gcal gcal.Options
+
+	// GcalReconciler serves "Sync now" (POST /gcal/sync); nil means sync isn't wired.
+	GcalReconciler *gcal.Reconciler
 }
 
 // Mount registers the custom routes on r. userMW is upstream's authenticated-user
