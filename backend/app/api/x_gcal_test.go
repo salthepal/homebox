@@ -22,6 +22,9 @@ import (
 	"github.com/sysadminsmedia/homebox/backend/internal/web/mid"
 )
 
+// gcalTestBaseURL is the public base URL used by the gcal tests in this package.
+const gcalTestBaseURL = "https://homebox.example.org"
+
 type gcalAPI struct {
 	t     *testing.T
 	r     chi.Router
@@ -35,7 +38,7 @@ func newGcalAPI(t *testing.T, configured bool) *gcalAPI {
 	fake := gcaltest.New(t)
 	if configured {
 		deps.Config = xconfig.Config{
-			PublicBaseURL: "https://homebox.example.org", GoogleClientID: "id", GoogleClientSecret: "secret",
+			PublicBaseURL: gcalTestBaseURL, GoogleClientID: "id", GoogleClientSecret: "secret",
 			SecretKey: bytes.Repeat([]byte{3}, 32), GcalSyncInterval: time.Minute * 15,
 		}
 	}
