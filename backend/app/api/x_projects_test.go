@@ -23,6 +23,17 @@ import (
 	"github.com/sysadminsmedia/homebox/backend/pkgs/hasher"
 )
 
+// Repeated JSON keys and paths used throughout these tests.
+const (
+	jEstCost     = "est_cost"
+	jEntityID    = "entity_id"
+	jEntityIDs   = "entity_ids"
+	jStatus      = "status"
+	pathProjects = "/projects"
+	jTitle       = "title"
+	jLogAsMaint  = "log_as_maintenance"
+)
+
 type projectsEnv struct {
 	t      *testing.T
 	a      *app
@@ -99,7 +110,7 @@ func decodeInto[T any](t *testing.T, rec *httptest.ResponseRecorder) T {
 
 func (e *projectsEnv) createProject(token string, body map[string]any) xapi.ProjectDTO {
 	e.t.Helper()
-	rec := e.do(http.MethodPost, "/projects", token, body)
+	rec := e.do(http.MethodPost, pathProjects, token, body)
 	require.Equal(e.t, http.StatusCreated, rec.Code, rec.Body.String())
 	return decodeInto[xapi.ProjectDTO](e.t, rec)
 }
@@ -161,11 +172,11 @@ func TestCustomProjectsHappyPath(t *testing.T) {
 
 	// Steps.
 	s1 := e.addStep(e.tokA, p.ID, map[string]any{
-		"title": "Buy NIC", "est_cost": 80, "url": "https://example.com/nic", "due_date": "2027-01-10",
-		"entity_id": nas, "log_as_maintenance": true, "notes": "Intel X550",
+		jTitle: "Buy NIC", jEstCost: 80, "url": "https://example.com/nic", "due_date": "2027-01-10",
+		jEntityID: nas, jLogAsMaint: true, "notes": "Intel X550",
 	})
-	s2 := e.addStep(e.tokA, p.ID, map[string]any{"title": "Install NIC", "est_cost": 0})
-	s3 := e.addStep(e.tokA, p.ID, map[string]any{"title": "Buy cables", "est_cost": 20})
+	s2 := e.addStep(e.tokA, p.ID, map[string]any{jTitle: "Install NIC", jEstCost: 0})
+	s3 := e.addStep(e.tokA, p.ID, map[string]any{jTitle: "Buy cables", jEstCost: 20})
 	assert.Equal(t, []int{0, 1, 2}, []int{s1.Position, s2.Position, s3.Position})
 	require.NotNil(t, s1.DueDate)
 	assert.Equal(t, "2027-01-10", *s1.DueDate)
@@ -181,7 +192,7 @@ func TestCustomProjectsHappyPath(t *testing.T) {
 
 	// Link items; names are resolved from upstream.
 	rec = e.do(http.MethodPut, fmt.Sprintf("/projects/%s/entities", p.ID), e.tokA,
-		map[string]any{"entity_ids": []uuid.UUID{nas, switchItem}})
+		map[string]any{jEntityIDs: []uuid.UUID{nas, switchItem}})
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	got = decodeInto[xapi.ProjectDTO](t, rec)
 	assert.ElementsMatch(t, []uuid.UUID{nas, switchItem}, got.EntityIDs)
@@ -193,7 +204,7 @@ func TestCustomProjectsHappyPath(t *testing.T) {
 
 	// Moving the first step to doing starts the project.
 	rec = e.do(http.MethodPut, fmt.Sprintf("/projects/%s/steps/%s", p.ID, s1.ID), e.tokA, map[string]any{
-		"title": "Buy NIC", "status": "doing", "est_cost": 80, "entity_id": nas, "log_as_maintenance": true, "notes": "Intel X550",
+		jTitle: "Buy NIC", jStatus: "doing", jEstCost: 80, jEntityID: nas, jLogAsMaint: true, "notes": "Intel X550",
 	})
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	got = e.getProject(e.tokA, p.ID)
@@ -228,7 +239,7 @@ func TestCustomProjectsHappyPath(t *testing.T) {
 
 	// Complete without logging (empty body is fine; explicit false overrides the step flag).
 	rec = e.do(http.MethodPost, fmt.Sprintf("/projects/%s/steps/%s/complete", p.ID, s2.ID), e.tokA,
-		map[string]any{"log_as_maintenance": false})
+		map[string]any{jLogAsMaint: false})
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	rec = e.do(http.MethodPost, fmt.Sprintf("/projects/%s/steps/%s/complete", p.ID, s3.ID), e.tokA, nil)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
@@ -243,7 +254,7 @@ func TestCustomProjectsHappyPath(t *testing.T) {
 
 	// Update the project (the UI's "mark done" prompt).
 	rec = e.do(http.MethodPut, fmt.Sprintf("/projects/%s", p.ID), e.tokA, map[string]any{
-		"name": "Upgrade NAS to 10GbE", "status": "done", "priority": 2,
+		"name": "Upgrade NAS to 10GbE", jStatus: "done", "priority": 2,
 	})
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	got = decodeInto[xapi.ProjectDTO](t, rec)
@@ -252,8 +263,8 @@ func TestCustomProjectsHappyPath(t *testing.T) {
 	assert.Nil(t, got.TargetDate, "PUT is a full replace")
 
 	// List + filters + by-entity.
-	other := e.createProject(e.tokA, map[string]any{"name": "Second", "status": "planning"})
-	rec = e.do(http.MethodGet, "/projects", e.tokA, nil)
+	other := e.createProject(e.tokA, map[string]any{"name": "Second", jStatus: "planning"})
+	rec = e.do(http.MethodGet, pathProjects, e.tokA, nil)
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.Len(t, decodeInto[[]xapi.ProjectDTO](t, rec), 2)
 	rec = e.do(http.MethodGet, "/projects?status=planning", e.tokA, nil)
@@ -289,10 +300,10 @@ func TestCustomProjectsCompleteStepRules(t *testing.T) {
 	item := e.createItem(e.gidA, "Printer")
 	p := e.createProject(e.tokA, map[string]any{"name": "P"})
 
-	noItem := e.addStep(e.tokA, p.ID, map[string]any{"title": "no item"})
+	noItem := e.addStep(e.tokA, p.ID, map[string]any{jTitle: "no item"})
 	// Logging requested but the step has no item: 400, step stays open.
 	rec := e.do(http.MethodPost, fmt.Sprintf("/projects/%s/steps/%s/complete", p.ID, noItem.ID), e.tokA,
-		map[string]any{"log_as_maintenance": true})
+		map[string]any{jLogAsMaint: true})
 	assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 	assert.Equal(t, "todo", e.getProject(e.tokA, p.ID).Steps[0].Status)
 
@@ -302,15 +313,15 @@ func TestCustomProjectsCompleteStepRules(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 
 	// A step with an item and no explicit flag doesn't log unless the step says so.
-	plain := e.addStep(e.tokA, p.ID, map[string]any{"title": "plain", "entity_id": item})
+	plain := e.addStep(e.tokA, p.ID, map[string]any{jTitle: "plain", jEntityID: item})
 	rec = e.do(http.MethodPost, fmt.Sprintf("/projects/%s/steps/%s/complete", p.ID, plain.ID), e.tokA, nil)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	assert.Empty(t, e.maintenance(e.gidA, item))
 
 	// An explicit true logs even though the step flag is off.
-	forced := e.addStep(e.tokA, p.ID, map[string]any{"title": "forced", "entity_id": item})
+	forced := e.addStep(e.tokA, p.ID, map[string]any{jTitle: "forced", jEntityID: item})
 	rec = e.do(http.MethodPost, fmt.Sprintf("/projects/%s/steps/%s/complete", p.ID, forced.ID), e.tokA,
-		map[string]any{"log_as_maintenance": true})
+		map[string]any{jLogAsMaint: true})
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	assert.Len(t, e.maintenance(e.gidA, item), 1)
 }
@@ -321,9 +332,9 @@ func TestCustomProjectsCrossGroupIsolation(t *testing.T) {
 	itemB := e.createItem(e.gidB, "B's NAS")
 
 	pa := e.createProject(e.tokA, map[string]any{"name": "A project"})
-	sa := e.addStep(e.tokA, pa.ID, map[string]any{"title": "A step", "entity_id": itemA, "log_as_maintenance": true})
-	sa2 := e.addStep(e.tokA, pa.ID, map[string]any{"title": "A step 2"})
-	rec := e.do(http.MethodPut, fmt.Sprintf("/projects/%s/entities", pa.ID), e.tokA, map[string]any{"entity_ids": []uuid.UUID{itemA}})
+	sa := e.addStep(e.tokA, pa.ID, map[string]any{jTitle: "A step", jEntityID: itemA, jLogAsMaint: true})
+	sa2 := e.addStep(e.tokA, pa.ID, map[string]any{jTitle: "A step 2"})
+	rec := e.do(http.MethodPut, fmt.Sprintf("/projects/%s/entities", pa.ID), e.tokA, map[string]any{jEntityIDs: []uuid.UUID{itemA}})
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	// Group B gets 404 on every route that names A's project or step, and nothing changes.
@@ -335,19 +346,19 @@ func TestCustomProjectsCrossGroupIsolation(t *testing.T) {
 		{http.MethodGet, fmt.Sprintf("/projects/%s", pid), nil},
 		{http.MethodPut, fmt.Sprintf("/projects/%s", pid), map[string]any{"name": "hijacked"}},
 		{http.MethodDelete, fmt.Sprintf("/projects/%s", pid), nil},
-		{http.MethodPost, fmt.Sprintf("/projects/%s/steps", pid), map[string]any{"title": "injected"}},
-		{http.MethodPut, fmt.Sprintf("/projects/%s/steps/%s", pid, sid), map[string]any{"title": "hijacked"}},
+		{http.MethodPost, fmt.Sprintf("/projects/%s/steps", pid), map[string]any{jTitle: "injected"}},
+		{http.MethodPut, fmt.Sprintf("/projects/%s/steps/%s", pid, sid), map[string]any{jTitle: "hijacked"}},
 		{http.MethodDelete, fmt.Sprintf("/projects/%s/steps/%s", pid, sid), nil},
 		{http.MethodPost, fmt.Sprintf("/projects/%s/steps/%s/complete", pid, sid), map[string]any{}},
 		{http.MethodPatch, fmt.Sprintf("/projects/%s/steps/order", pid), map[string]any{"step_ids": []uuid.UUID{sa2.ID, sa.ID}}},
-		{http.MethodPut, fmt.Sprintf("/projects/%s/entities", pid), map[string]any{"entity_ids": []uuid.UUID{}}},
+		{http.MethodPut, fmt.Sprintf("/projects/%s/entities", pid), map[string]any{jEntityIDs: []uuid.UUID{}}},
 	} {
 		rec := e.do(tc.method, tc.path, e.tokB, tc.body)
 		assert.Equal(t, http.StatusNotFound, rec.Code, "%s %s -> %s", tc.method, tc.path, rec.Body.String())
 	}
 
 	// B's lists don't include A's data.
-	rec = e.do(http.MethodGet, "/projects", e.tokB, nil)
+	rec = e.do(http.MethodGet, pathProjects, e.tokB, nil)
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.JSONEq(t, "[]", rec.Body.String())
 	rec = e.do(http.MethodGet, fmt.Sprintf("/entities/%s/projects", itemA), e.tokB, nil)
@@ -356,15 +367,15 @@ func TestCustomProjectsCrossGroupIsolation(t *testing.T) {
 
 	// B can't link A's item to B's own project or to a step, and can't log maintenance on it.
 	pb := e.createProject(e.tokB, map[string]any{"name": "B project"})
-	rec = e.do(http.MethodPut, fmt.Sprintf("/projects/%s/entities", pb.ID), e.tokB, map[string]any{"entity_ids": []uuid.UUID{itemA}})
+	rec = e.do(http.MethodPut, fmt.Sprintf("/projects/%s/entities", pb.ID), e.tokB, map[string]any{jEntityIDs: []uuid.UUID{itemA}})
 	assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
-	rec = e.do(http.MethodPost, fmt.Sprintf("/projects/%s/steps", pb.ID), e.tokB, map[string]any{"title": "x", "entity_id": itemA})
+	rec = e.do(http.MethodPost, fmt.Sprintf("/projects/%s/steps", pb.ID), e.tokB, map[string]any{jTitle: "x", jEntityID: itemA})
 	assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 	// B's project can't reach A's step either.
-	rec = e.do(http.MethodPut, fmt.Sprintf("/projects/%s/steps/%s", pb.ID, sid), e.tokB, map[string]any{"title": "hijacked"})
+	rec = e.do(http.MethodPut, fmt.Sprintf("/projects/%s/steps/%s", pb.ID, sid), e.tokB, map[string]any{jTitle: "hijacked"})
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 	// B can link its own item.
-	rec = e.do(http.MethodPut, fmt.Sprintf("/projects/%s/entities", pb.ID), e.tokB, map[string]any{"entity_ids": []uuid.UUID{itemB}})
+	rec = e.do(http.MethodPut, fmt.Sprintf("/projects/%s/entities", pb.ID), e.tokB, map[string]any{jEntityIDs: []uuid.UUID{itemB}})
 	assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	// Nothing of A's changed, and no maintenance entry was created on A's item.
@@ -380,30 +391,30 @@ func TestCustomProjectsCrossGroupIsolation(t *testing.T) {
 func TestCustomProjectsValidationAndAuth(t *testing.T) {
 	e := newProjectsEnv(t)
 	p := e.createProject(e.tokA, map[string]any{"name": "P"})
-	s := e.addStep(e.tokA, p.ID, map[string]any{"title": "S"})
+	s := e.addStep(e.tokA, p.ID, map[string]any{jTitle: "S"})
 
 	// Unauthenticated.
-	assert.Equal(t, http.StatusUnauthorized, e.do(http.MethodGet, "/projects", "", nil).Code)
-	assert.Equal(t, http.StatusUnauthorized, e.do(http.MethodPost, "/projects", "", map[string]any{"name": "x"}).Code)
+	assert.Equal(t, http.StatusUnauthorized, e.do(http.MethodGet, pathProjects, "", nil).Code)
+	assert.Equal(t, http.StatusUnauthorized, e.do(http.MethodPost, pathProjects, "", map[string]any{"name": "x"}).Code)
 
 	bad := []struct {
 		name, method, path string
 		body               any
 	}{
-		{"empty name", http.MethodPost, "/projects", map[string]any{"name": " "}},
-		{"bad status", http.MethodPost, "/projects", map[string]any{"name": "x", "status": "bogus"}},
-		{"bad priority", http.MethodPost, "/projects", map[string]any{"name": "x", "priority": 9}},
-		{"bad date", http.MethodPost, "/projects", map[string]any{"name": "x", "target_date": "tomorrow"}},
-		{"unknown field", http.MethodPost, "/projects", map[string]any{"name": "x", "nope": 1}},
-		{"malformed json", http.MethodPost, "/projects", "{not json"},
-		{"empty body", http.MethodPost, "/projects", nil},
+		{"empty name", http.MethodPost, pathProjects, map[string]any{"name": " "}},
+		{"bad status", http.MethodPost, pathProjects, map[string]any{"name": "x", jStatus: "bogus"}},
+		{"bad priority", http.MethodPost, pathProjects, map[string]any{"name": "x", "priority": 9}},
+		{"bad date", http.MethodPost, pathProjects, map[string]any{"name": "x", "target_date": "tomorrow"}},
+		{"unknown field", http.MethodPost, pathProjects, map[string]any{"name": "x", "nope": 1}},
+		{"malformed json", http.MethodPost, pathProjects, "{not json"},
+		{"empty body", http.MethodPost, pathProjects, nil},
 		{"bad project id", http.MethodGet, "/projects/not-a-uuid", nil},
-		{"empty step title", http.MethodPost, fmt.Sprintf("/projects/%s/steps", p.ID), map[string]any{"title": ""}},
-		{"bad step status", http.MethodPost, fmt.Sprintf("/projects/%s/steps", p.ID), map[string]any{"title": "x", "status": "nope"}},
-		{"negative cost", http.MethodPost, fmt.Sprintf("/projects/%s/steps", p.ID), map[string]any{"title": "x", "est_cost": -5}},
-		{"bad due date", http.MethodPut, fmt.Sprintf("/projects/%s/steps/%s", p.ID, s.ID), map[string]any{"title": "x", "due_date": "13/13/2027"}},
-		{"unknown item", http.MethodPost, fmt.Sprintf("/projects/%s/steps", p.ID), map[string]any{"title": "x", "entity_id": uuid.New()}},
-		{"link unknown item", http.MethodPut, fmt.Sprintf("/projects/%s/entities", p.ID), map[string]any{"entity_ids": []uuid.UUID{uuid.New()}}},
+		{"empty step title", http.MethodPost, fmt.Sprintf("/projects/%s/steps", p.ID), map[string]any{jTitle: ""}},
+		{"bad step status", http.MethodPost, fmt.Sprintf("/projects/%s/steps", p.ID), map[string]any{jTitle: "x", jStatus: "nope"}},
+		{"negative cost", http.MethodPost, fmt.Sprintf("/projects/%s/steps", p.ID), map[string]any{jTitle: "x", jEstCost: -5}},
+		{"bad due date", http.MethodPut, fmt.Sprintf("/projects/%s/steps/%s", p.ID, s.ID), map[string]any{jTitle: "x", "due_date": "13/13/2027"}},
+		{"unknown item", http.MethodPost, fmt.Sprintf("/projects/%s/steps", p.ID), map[string]any{jTitle: "x", jEntityID: uuid.New()}},
+		{"link unknown item", http.MethodPut, fmt.Sprintf("/projects/%s/entities", p.ID), map[string]any{jEntityIDs: []uuid.UUID{uuid.New()}}},
 		{"reorder missing step", http.MethodPatch, fmt.Sprintf("/projects/%s/steps/order", p.ID), map[string]any{"step_ids": []uuid.UUID{}}},
 		{"reorder foreign step", http.MethodPatch, fmt.Sprintf("/projects/%s/steps/order", p.ID), map[string]any{"step_ids": []uuid.UUID{uuid.New()}}},
 	}
@@ -416,7 +427,7 @@ func TestCustomProjectsValidationAndAuth(t *testing.T) {
 	got := e.getProject(e.tokA, p.ID)
 	assert.Len(t, got.Steps, 1)
 	assert.Empty(t, got.EntityIDs)
-	rec := e.do(http.MethodGet, "/projects", e.tokA, nil)
+	rec := e.do(http.MethodGet, pathProjects, e.tokA, nil)
 	assert.Len(t, decodeInto[[]xapi.ProjectDTO](t, rec), 1)
 
 	// Unknown IDs are 404.
@@ -433,16 +444,16 @@ func TestCustomProjectsSweepOrphans(t *testing.T) {
 
 	p := e.createProject(e.tokA, map[string]any{"name": "P"})
 	rec := e.do(http.MethodPut, fmt.Sprintf("/projects/%s/entities", p.ID), e.tokA,
-		map[string]any{"entity_ids": []uuid.UUID{keepItem, goneItem}})
+		map[string]any{jEntityIDs: []uuid.UUID{keepItem, goneItem}})
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	logged := e.addStep(e.tokA, p.ID, map[string]any{"title": "logged", "entity_id": keepItem, "log_as_maintenance": true})
-	onGone := e.addStep(e.tokA, p.ID, map[string]any{"title": "on gone", "entity_id": goneItem})
+	logged := e.addStep(e.tokA, p.ID, map[string]any{jTitle: "logged", jEntityID: keepItem, jLogAsMaint: true})
+	onGone := e.addStep(e.tokA, p.ID, map[string]any{jTitle: "on gone", jEntityID: goneItem})
 	rec = e.do(http.MethodPost, fmt.Sprintf("/projects/%s/steps/%s/complete", p.ID, logged.ID), e.tokA, nil)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	entryID := *decodeInto[xapi.StepDTO](t, rec).MaintenanceEntryID
 
 	pb := e.createProject(e.tokB, map[string]any{"name": "B"})
-	rec = e.do(http.MethodPut, fmt.Sprintf("/projects/%s/entities", pb.ID), e.tokB, map[string]any{"entity_ids": []uuid.UUID{bItem}})
+	rec = e.do(http.MethodPut, fmt.Sprintf("/projects/%s/entities", pb.ID), e.tokB, map[string]any{jEntityIDs: []uuid.UUID{bItem}})
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	// Nothing is orphaned yet: the sweep changes nothing.
