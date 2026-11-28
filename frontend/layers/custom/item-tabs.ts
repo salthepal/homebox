@@ -1,5 +1,5 @@
 // Tabs injected into frontend/pages/item/[id]/index.vue through a single spread (a seam).
-// Shape mirrors that file's tabs array. Populated in task P4.
+// Shape mirrors that file's tabs array (`name` is an i18n key, resolved with $t there).
 import type { Ref } from "vue";
 
 export type CustomItemTab = {
@@ -8,7 +8,12 @@ export type CustomItemTab = {
   to: string;
 };
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- used once P4 adds the Projects tab
 export function customItemTabs(itemId: Readonly<Ref<string>>): CustomItemTab[] {
-  return [];
+  return [
+    {
+      id: "x-projects",
+      name: "x.projects.item_tab.title",
+      to: `/item/${itemId.value}/projects`,
+    },
+  ];
 }
