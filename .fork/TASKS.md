@@ -117,8 +117,14 @@ Pages `/x/projects` and `/x/projects/[id]` per PLAN §6. Use existing shadcn com
 `📋` step events (PLAN §7), wired to `include_project_steps`. Settings UI shows last sync and last error, plus Reconnect when the token is broken.
 **Done when:** a due step appears on the calendar and turns ✅ when completed.
 
-### [ ] G4 · (optional) ICS feed
+### [x] G4 · (optional) ICS feed
 Per-group revocable token (stored hashed), `GET /api/v1/x/calendar/{token}.ics`, outside the auth middleware, rate-limited. Needs a Cloudflare Access bypass for that path only.
+
+**Status (2026-11-28):** done. Migration `00004_x_ics.sql` (table `x_ics_feeds`, one row per group, only the SHA-256 of the token is stored). `internal/custom/ics`: RFC 5545 writer (CRLF, 75-octet folding that never splits a UTF-8 sequence, TEXT escaping, stable `UID`s, all-day `DTSTART;VALUE=DATE`, `X-WR-CALNAME`, display `VALARM` for scheduled work), token store (256-bit base64url, issue/rotate/revoke/lookup with constant-time compare), and a per-IP fixed-window limiter (60 requests/min). Events reuse G2's `MaintenanceDesired` mapping (🔧/✅ titles, deep links), so the feed matches the Google calendar. Routes: `GET/POST/DELETE /api/v1/x/calendar/feed` (authenticated: status, create-or-rotate returning the URL once, revoke) and `GET /api/v1/x/calendar/{token}.ics` (no auth middleware). Unknown, malformed, huge and revoked tokens all get the same bare 404. UI: an "ICS feed" card on `/x/calendar` (shown whether or not Google is configured; copy, rotate, revoke). Project steps are not in the feed (G3 adds them to the Google provider; add them here too if wanted).
+- Checks run locally: BE + BE-PG (custom + `TestCustom*`), FE lint and typecheck, SEAM. Not in a real browser.
+- **Owner step:** add a Cloudflare Access **bypass** policy for the path `/api/v1/x/calendar/*` **only**. Calendar apps can't log in, so without it the subscription URL is blocked. The rest of the site stays behind Access. The feed is protected by the unguessable token, rate limiting and revocation instead.
+- **Rate limiting behind the tunnel:** upstream omits RealIP, so the limiter uses the socket peer, and only trusts `CF-Connecting-IP` when that peer is loopback/private (the tunnel connector). If cloudflared reaches Homebox from a public address, every caller shares one bucket.
+- Migration `00004` is new: back up Postgres before deploying.
 
 ---
 

@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xgcalconnection"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xgcallink"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xicsfeed"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xmeta"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xproject"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xprojectstep"
@@ -79,6 +80,7 @@ func checkColumn(t, c string) error {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
 			xgcalconnection.Table: xgcalconnection.ValidColumn,
 			xgcallink.Table:       xgcallink.ValidColumn,
+			xicsfeed.Table:        xicsfeed.ValidColumn,
 			xmeta.Table:           xmeta.ValidColumn,
 			xproject.Table:        xproject.ValidColumn,
 			xprojectstep.Table:    xprojectstep.ValidColumn,

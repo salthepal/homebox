@@ -9,6 +9,7 @@ import (
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/schema"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xgcalconnection"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xgcallink"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xicsfeed"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xmeta"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xproject"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xprojectstep"
@@ -80,6 +81,16 @@ func init() {
 	xgcallinkDescID := xgcallinkFields[0].Descriptor()
 	// xgcallink.DefaultID holds the default value on creation for the id field.
 	xgcallink.DefaultID = xgcallinkDescID.Default.(func() uuid.UUID)
+	xicsfeedFields := schema.XIcsFeed{}.Fields()
+	_ = xicsfeedFields
+	// xicsfeedDescTokenHash is the schema descriptor for token_hash field.
+	xicsfeedDescTokenHash := xicsfeedFields[1].Descriptor()
+	// xicsfeed.TokenHashValidator is a validator for the "token_hash" field. It is called by the builders before save.
+	xicsfeed.TokenHashValidator = xicsfeedDescTokenHash.Validators[0].(func(string) error)
+	// xicsfeedDescCreatedAt is the schema descriptor for created_at field.
+	xicsfeedDescCreatedAt := xicsfeedFields[3].Descriptor()
+	// xicsfeed.DefaultCreatedAt holds the default value on creation for the created_at field.
+	xicsfeed.DefaultCreatedAt = xicsfeedDescCreatedAt.Default.(func() time.Time)
 	xmetaFields := schema.XMeta{}.Fields()
 	_ = xmetaFields
 	// xmetaDescValue is the schema descriptor for value field.

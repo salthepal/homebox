@@ -36,6 +36,7 @@ func newGcalReconciler(a *app, xcfg xconfig.Config, xc *xent.Client, opts gcal.O
 func registerCustomGcal(a *app, xcfg xconfig.Config, xc *xent.Client, runner *graceful.Runner, deps *xapi.Deps) {
 	rec := newGcalReconciler(a, xcfg, xc, deps.Gcal, gcal.ReconcilerOptions{})
 	deps.GcalReconciler = rec
+	deps.Maintenance = upstream.NewMaintenanceReader(a.db) // also serves the ICS feed
 	if !xcfg.GcalEnabled() {
 		return
 	}

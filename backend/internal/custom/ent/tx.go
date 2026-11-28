@@ -16,6 +16,8 @@ type Tx struct {
 	XGcalConnection *XGcalConnectionClient
 	// XGcalLink is the client for interacting with the XGcalLink builders.
 	XGcalLink *XGcalLinkClient
+	// XIcsFeed is the client for interacting with the XIcsFeed builders.
+	XIcsFeed *XIcsFeedClient
 	// XMeta is the client for interacting with the XMeta builders.
 	XMeta *XMetaClient
 	// XProject is the client for interacting with the XProject builders.
@@ -155,6 +157,7 @@ func (tx *Tx) Client() *Client {
 func (tx *Tx) init() {
 	tx.XGcalConnection = NewXGcalConnectionClient(tx.config)
 	tx.XGcalLink = NewXGcalLinkClient(tx.config)
+	tx.XIcsFeed = NewXIcsFeedClient(tx.config)
 	tx.XMeta = NewXMetaClient(tx.config)
 	tx.XProject = NewXProjectClient(tx.config)
 	tx.XProjectStep = NewXProjectStepClient(tx.config)

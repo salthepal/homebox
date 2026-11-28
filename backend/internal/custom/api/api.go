@@ -15,6 +15,7 @@ import (
 	xconfig "github.com/sysadminsmedia/homebox/backend/internal/custom/config"
 	xent "github.com/sysadminsmedia/homebox/backend/internal/custom/ent"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/gcal"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/ics"
 )
 
 // Deps are the dependencies shared by custom handlers.
@@ -26,6 +27,11 @@ type Deps struct {
 
 	// GcalReconciler serves "Sync now" (POST /gcal/sync); nil means sync isn't wired.
 	GcalReconciler *gcal.Reconciler
+
+	// Maintenance reads upstream maintenance entries for the ICS feed.
+	Maintenance gcal.MaintenanceLister
+	// IcsLimiter overrides the feed's per-IP rate limiter (tests); nil = default.
+	IcsLimiter *ics.Limiter
 }
 
 // Mount registers the custom routes on r. userMW is upstream's authenticated-user
@@ -33,6 +39,7 @@ type Deps struct {
 func Mount(r chi.Router, chain *errchain.ErrChain, userMW []errchain.Middleware, d Deps) {
 	r.Get("/ping", chain.ToHandlerFunc(handlePing(d), userMW...))
 	mountGcal(r, chain, userMW, d)
+	mountICS(r, chain, userMW, d)
 }
 
 // PingResponse proves the custom stack end to end: routing, auth, tenant and custom DB.

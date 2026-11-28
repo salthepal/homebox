@@ -12,6 +12,9 @@ type XGcalConnection func(*sql.Selector)
 // XGcalLink is the predicate function for xgcallink builders.
 type XGcalLink func(*sql.Selector)
 
+// XIcsFeed is the predicate function for xicsfeed builders.
+type XIcsFeed func(*sql.Selector)
+
 // XMeta is the predicate function for xmeta builders.
 type XMeta func(*sql.Selector)
 

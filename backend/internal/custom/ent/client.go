@@ -18,6 +18,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xgcalconnection"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xgcallink"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xicsfeed"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xmeta"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xproject"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xprojectstep"
@@ -32,6 +33,8 @@ type Client struct {
 	XGcalConnection *XGcalConnectionClient
 	// XGcalLink is the client for interacting with the XGcalLink builders.
 	XGcalLink *XGcalLinkClient
+	// XIcsFeed is the client for interacting with the XIcsFeed builders.
+	XIcsFeed *XIcsFeedClient
 	// XMeta is the client for interacting with the XMeta builders.
 	XMeta *XMetaClient
 	// XProject is the client for interacting with the XProject builders.
@@ -51,6 +54,7 @@ func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.XGcalConnection = NewXGcalConnectionClient(c.config)
 	c.XGcalLink = NewXGcalLinkClient(c.config)
+	c.XIcsFeed = NewXIcsFeedClient(c.config)
 	c.XMeta = NewXMetaClient(c.config)
 	c.XProject = NewXProjectClient(c.config)
 	c.XProjectStep = NewXProjectStepClient(c.config)
@@ -148,6 +152,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		config:          cfg,
 		XGcalConnection: NewXGcalConnectionClient(cfg),
 		XGcalLink:       NewXGcalLinkClient(cfg),
+		XIcsFeed:        NewXIcsFeedClient(cfg),
 		XMeta:           NewXMetaClient(cfg),
 		XProject:        NewXProjectClient(cfg),
 		XProjectStep:    NewXProjectStepClient(cfg),
@@ -172,6 +177,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		config:          cfg,
 		XGcalConnection: NewXGcalConnectionClient(cfg),
 		XGcalLink:       NewXGcalLinkClient(cfg),
+		XIcsFeed:        NewXIcsFeedClient(cfg),
 		XMeta:           NewXMetaClient(cfg),
 		XProject:        NewXProjectClient(cfg),
 		XProjectStep:    NewXProjectStepClient(cfg),
@@ -203,21 +209,21 @@ func (c *Client) Close() error {
 // Use adds the mutation hooks to all the entity clients.
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
-	c.XGcalConnection.Use(hooks...)
-	c.XGcalLink.Use(hooks...)
-	c.XMeta.Use(hooks...)
-	c.XProject.Use(hooks...)
-	c.XProjectStep.Use(hooks...)
+	for _, n := range []interface{ Use(...Hook) }{
+		c.XGcalConnection, c.XGcalLink, c.XIcsFeed, c.XMeta, c.XProject, c.XProjectStep,
+	} {
+		n.Use(hooks...)
+	}
 }
 
 // Intercept adds the query interceptors to all the entity clients.
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
-	c.XGcalConnection.Intercept(interceptors...)
-	c.XGcalLink.Intercept(interceptors...)
-	c.XMeta.Intercept(interceptors...)
-	c.XProject.Intercept(interceptors...)
-	c.XProjectStep.Intercept(interceptors...)
+	for _, n := range []interface{ Intercept(...Interceptor) }{
+		c.XGcalConnection, c.XGcalLink, c.XIcsFeed, c.XMeta, c.XProject, c.XProjectStep,
+	} {
+		n.Intercept(interceptors...)
+	}
 }
 
 // Mutate implements the ent.Mutator interface.
@@ -227,6 +233,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.XGcalConnection.mutate(ctx, m)
 	case *XGcalLinkMutation:
 		return c.XGcalLink.mutate(ctx, m)
+	case *XIcsFeedMutation:
+		return c.XIcsFeed.mutate(ctx, m)
 	case *XMetaMutation:
 		return c.XMeta.mutate(ctx, m)
 	case *XProjectMutation:
@@ -501,6 +509,139 @@ func (c *XGcalLinkClient) mutate(ctx context.Context, m *XGcalLinkMutation) (Val
 		return (&XGcalLinkDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown XGcalLink mutation op: %q", m.Op())
+	}
+}
+
+// XIcsFeedClient is a client for the XIcsFeed schema.
+type XIcsFeedClient struct {
+	config
+}
+
+// NewXIcsFeedClient returns a client for the XIcsFeed from the given config.
+func NewXIcsFeedClient(c config) *XIcsFeedClient {
+	return &XIcsFeedClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `xicsfeed.Hooks(f(g(h())))`.
+func (c *XIcsFeedClient) Use(hooks ...Hook) {
+	c.hooks.XIcsFeed = append(c.hooks.XIcsFeed, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `xicsfeed.Intercept(f(g(h())))`.
+func (c *XIcsFeedClient) Intercept(interceptors ...Interceptor) {
+	c.inters.XIcsFeed = append(c.inters.XIcsFeed, interceptors...)
+}
+
+// Create returns a builder for creating a XIcsFeed entity.
+func (c *XIcsFeedClient) Create() *XIcsFeedCreate {
+	mutation := newXIcsFeedMutation(c.config, OpCreate)
+	return &XIcsFeedCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of XIcsFeed entities.
+func (c *XIcsFeedClient) CreateBulk(builders ...*XIcsFeedCreate) *XIcsFeedCreateBulk {
+	return &XIcsFeedCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *XIcsFeedClient) MapCreateBulk(slice any, setFunc func(*XIcsFeedCreate, int)) *XIcsFeedCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &XIcsFeedCreateBulk{err: fmt.Errorf("calling to XIcsFeedClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*XIcsFeedCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &XIcsFeedCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for XIcsFeed.
+func (c *XIcsFeedClient) Update() *XIcsFeedUpdate {
+	mutation := newXIcsFeedMutation(c.config, OpUpdate)
+	return &XIcsFeedUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *XIcsFeedClient) UpdateOne(_m *XIcsFeed) *XIcsFeedUpdateOne {
+	mutation := newXIcsFeedMutation(c.config, OpUpdateOne, withXIcsFeed(_m))
+	return &XIcsFeedUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *XIcsFeedClient) UpdateOneID(id uuid.UUID) *XIcsFeedUpdateOne {
+	mutation := newXIcsFeedMutation(c.config, OpUpdateOne, withXIcsFeedID(id))
+	return &XIcsFeedUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for XIcsFeed.
+func (c *XIcsFeedClient) Delete() *XIcsFeedDelete {
+	mutation := newXIcsFeedMutation(c.config, OpDelete)
+	return &XIcsFeedDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *XIcsFeedClient) DeleteOne(_m *XIcsFeed) *XIcsFeedDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *XIcsFeedClient) DeleteOneID(id uuid.UUID) *XIcsFeedDeleteOne {
+	builder := c.Delete().Where(xicsfeed.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &XIcsFeedDeleteOne{builder}
+}
+
+// Query returns a query builder for XIcsFeed.
+func (c *XIcsFeedClient) Query() *XIcsFeedQuery {
+	return &XIcsFeedQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeXIcsFeed},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a XIcsFeed entity by its id.
+func (c *XIcsFeedClient) Get(ctx context.Context, id uuid.UUID) (*XIcsFeed, error) {
+	return c.Query().Where(xicsfeed.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *XIcsFeedClient) GetX(ctx context.Context, id uuid.UUID) *XIcsFeed {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *XIcsFeedClient) Hooks() []Hook {
+	return c.hooks.XIcsFeed
+}
+
+// Interceptors returns the client interceptors.
+func (c *XIcsFeedClient) Interceptors() []Interceptor {
+	return c.inters.XIcsFeed
+}
+
+func (c *XIcsFeedClient) mutate(ctx context.Context, m *XIcsFeedMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&XIcsFeedCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&XIcsFeedUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&XIcsFeedUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&XIcsFeedDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown XIcsFeed mutation op: %q", m.Op())
 	}
 }
 
@@ -938,9 +1079,10 @@ func (c *XProjectStepClient) mutate(ctx context.Context, m *XProjectStepMutation
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		XGcalConnection, XGcalLink, XMeta, XProject, XProjectStep []ent.Hook
+		XGcalConnection, XGcalLink, XIcsFeed, XMeta, XProject, XProjectStep []ent.Hook
 	}
 	inters struct {
-		XGcalConnection, XGcalLink, XMeta, XProject, XProjectStep []ent.Interceptor
+		XGcalConnection, XGcalLink, XIcsFeed, XMeta, XProject,
+		XProjectStep []ent.Interceptor
 	}
 )
