@@ -3,7 +3,7 @@
   import { useI18n } from "vue-i18n";
   import { Input } from "@/components/ui/input";
 
-  const props = defineProps<{ exclude?: string[]; placeholder?: string }>();
+  const props = defineProps<{ exclude?: string[]; placeholder?: string; disabled?: boolean }>();
   const emit = defineEmits<{ (e: "pick", item: { id: string; name: string }): void }>();
 
   const { t } = useI18n();
@@ -32,6 +32,11 @@
   }
 
   watch(query, () => {
+    // Invalidate any in-flight search and drop its results right away, so a slow response for
+    // the previous query can't repopulate the list during the debounce window.
+    seq++;
+    results.value = [];
+    searched.value = false;
     clearTimeout(timer);
     timer = setTimeout(search, 250);
   });
@@ -47,7 +52,12 @@
 
 <template>
   <div class="relative">
-    <Input v-model="query" :placeholder="placeholder ?? t('x.projects.items.search')" data-testid="x-item-search" />
+    <Input
+      v-model="query"
+      :placeholder="placeholder ?? t('x.projects.items.search')"
+      :disabled="disabled"
+      data-testid="x-item-search"
+    />
     <ul
       v-if="results.length || searched"
       class="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"

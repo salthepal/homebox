@@ -3,12 +3,14 @@
   import { Badge } from "@/components/ui/badge";
   import { Progress } from "@/components/ui/progress";
   import type { XProject } from "../lib/api/client";
-  import { formatDate, formatMoney, projectCosts, projectProgress } from "../lib/projects";
+  import { formatDate, projectCosts, projectProgress } from "../lib/projects";
   import { useItemNames } from "../composables/useItemNames";
+  import { useMoney } from "../composables/useMoney";
 
   const props = defineProps<{ project: XProject }>();
   const { t } = useI18n();
   const { resolve, seed, nameOf } = useItemNames();
+  const formatMoney = useMoney();
 
   const progress = computed(() => projectProgress(props.project));
   const costs = computed(() => projectCosts(props.project));

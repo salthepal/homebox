@@ -122,6 +122,8 @@
           "confirm": "Mark complete"
         }
       },
+      "load_failed": "Couldn't load this project.",
+      "retry": "Retry",
       "item_tab": {
         "title": "Projects",
         "new": "New project for this item",

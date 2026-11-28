@@ -38,12 +38,14 @@
     PROJECT_STATUSES,
     STEP_STATUSES,
     formatDate,
-    formatMoney,
+    formatTimestamp,
+    safeHttpUrl,
     projectCosts,
     projectProgress,
     shouldPromptDone,
   } from "../../../lib/projects";
   import { useItemNames } from "../../../composables/useItemNames";
+  import { useMoney } from "../../../composables/useMoney";
   import ItemPicker from "../../../components/ItemPicker.vue";
   import ProjectFormDialog from "../../../components/ProjectFormDialog.vue";
   import StepCompleteDialog from "../../../components/StepCompleteDialog.vue";
@@ -54,6 +56,7 @@
   const route = useRoute();
   const router = useRouter();
   const { resolve, seed, nameOf } = useItemNames();
+  const formatMoney = useMoney();
 
   definePageMeta({
     middleware: ["auth"],
@@ -63,6 +66,7 @@
 
   const project = ref<XProject | null>(null);
   const notFound = ref(false);
+  const loadFailed = ref(false);
   const busy = ref(false);
 
   useHead({
@@ -72,11 +76,19 @@
   async function load() {
     const resp = await api.getProject(projectId.value);
     if (resp.error) {
-      notFound.value = true;
-      project.value = null;
+      // Only a 404 means the project is gone; anything else is a recoverable load error and
+      // keeps whatever is already on screen.
+      if (resp.status === 404) {
+        notFound.value = true;
+        loadFailed.value = false;
+        project.value = null;
+      } else {
+        loadFailed.value = true;
+      }
       return;
     }
     notFound.value = false;
+    loadFailed.value = false;
     project.value = resp.data;
     seed(resp.data.entities);
     await resolve([...resp.data.entity_ids, ...resp.data.steps.map(s => s.entity_id)]);
@@ -153,7 +165,7 @@
     await run(() => api.setProjectEntities(projectId.value, ids));
   }
   async function linkItem(item: { id: string; name: string }) {
-    if (!project.value || project.value.entity_ids.includes(item.id)) return;
+    if (busy.value || !project.value || project.value.entity_ids.includes(item.id)) return;
     await setEntities([...project.value.entity_ids, item.id]);
   }
   async function unlinkItem(id: string) {
@@ -244,11 +256,24 @@
         <MdiArrowLeft /> {{ t("x.projects.back") }}
       </NuxtLink>
 
-      <p v-if="notFound || !project" class="text-muted-foreground" data-testid="x-project-notfound">
+      <p v-if="notFound" class="text-muted-foreground" data-testid="x-project-notfound">
         {{ t("x.projects.not_found") }}
       </p>
 
+      <div
+        v-else-if="!project"
+        class="flex flex-col items-start gap-2 text-destructive"
+        data-testid="x-project-load-failed"
+      >
+        <p>{{ t("x.projects.load_failed") }}</p>
+        <Button variant="outline" size="sm" @click="load">{{ t("x.projects.retry") }}</Button>
+      </div>
+
       <template v-else>
+        <p v-if="loadFailed" class="text-sm text-destructive" data-testid="x-project-reload-failed">
+          {{ t("x.projects.load_failed") }}
+          <button type="button" class="underline" @click="load">{{ t("x.projects.retry") }}</button>
+        </p>
         <!-- header -->
         <header class="flex flex-col gap-3">
           <div class="flex flex-wrap items-start justify-between gap-2">
@@ -284,10 +309,10 @@
               {{ t("x.projects.card.target", { date: formatDate(project.target_date) }) }}
             </span>
             <span v-if="project.started_at" class="text-muted-foreground">
-              {{ t("x.projects.detail.started", { date: formatDate(project.started_at) }) }}
+              {{ t("x.projects.detail.started", { date: formatTimestamp(project.started_at) }) }}
             </span>
             <span v-if="project.completed_at" class="text-muted-foreground">
-              {{ t("x.projects.detail.completed", { date: formatDate(project.completed_at) }) }}
+              {{ t("x.projects.detail.completed", { date: formatTimestamp(project.completed_at) }) }}
             </span>
           </div>
 
@@ -360,7 +385,12 @@
             </Badge>
           </div>
           <div class="max-w-sm">
-            <ItemPicker :exclude="project.entity_ids" :placeholder="t('x.projects.items.add')" @pick="linkItem" />
+            <ItemPicker
+              :exclude="project.entity_ids"
+              :placeholder="t('x.projects.items.add')"
+              :disabled="busy"
+              @pick="linkItem"
+            />
           </div>
         </section>
 
@@ -405,9 +435,15 @@
                   <NuxtLink v-if="s.entity_id" :to="`/item/${s.entity_id}`" class="hover:underline">
                     {{ nameOf(s.entity_id) }}
                   </NuxtLink>
-                  <a v-if="s.url" :href="s.url" target="_blank" rel="noopener noreferrer" class="underline">{{
-                    s.url
-                  }}</a>
+                  <a
+                    v-if="safeHttpUrl(s.url)"
+                    :href="safeHttpUrl(s.url)!"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="underline"
+                    >{{ s.url }}</a
+                  >
+                  <span v-else-if="s.url" class="break-all text-muted-foreground">{{ s.url }}</span>
                   <Badge v-if="s.maintenance_entry_id" variant="outline">{{ t("x.projects.steps.logged") }}</Badge>
                 </div>
               </div>

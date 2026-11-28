@@ -242,6 +242,10 @@ func decode[T any](r *http.Request, allowEmpty bool) (T, error) {
 		}
 		return v, validate.NewRequestError(fmt.Errorf("invalid request body: %w", err), http.StatusBadRequest)
 	}
+	// Exactly one JSON value: anything after it (another value, garbage) is a 400.
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return v, validate.NewRequestError(errors.New("invalid request body: unexpected data after JSON value"), http.StatusBadRequest)
+	}
 	return v, nil
 }
 
