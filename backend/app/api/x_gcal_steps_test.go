@@ -46,7 +46,7 @@ func newStepSyncEnv(t *testing.T) stepSyncEnv {
 
 	fake := gcaltest.New(t)
 	xcfg := xconfig.Config{
-		PublicBaseURL: "https://homebox.example.org", GoogleClientID: "id", GoogleClientSecret: "secret",
+		PublicBaseURL: gcalTestBaseURL, GoogleClientID: "id", GoogleClientSecret: "secret",
 		SecretKey: bytes.Repeat([]byte{3}, 32), GcalSyncInterval: 15 * time.Minute,
 	}
 	deps.Config = xcfg
