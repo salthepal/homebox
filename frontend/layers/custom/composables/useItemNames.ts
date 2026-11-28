@@ -13,7 +13,10 @@ export function useItemNames() {
     await Promise.all(
       todo.map(async id => {
         const resp = await api.items.get(id);
-        names.value = { ...names.value, [id]: resp.error ? null : resp.data.name };
+        // Only a confirmed 404 is cached as "deleted"; other failures stay uncached so a
+        // later render can retry.
+        if (!resp.error) names.value = { ...names.value, [id]: resp.data.name };
+        else if (resp.status === 404) names.value = { ...names.value, [id]: null };
         pending.delete(id);
       })
     );

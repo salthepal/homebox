@@ -38,6 +38,7 @@
     PROJECT_STATUSES,
     STEP_STATUSES,
     formatDate,
+    formatTimestamp,
     safeHttpUrl,
     projectCosts,
     projectProgress,
@@ -164,7 +165,7 @@
     await run(() => api.setProjectEntities(projectId.value, ids));
   }
   async function linkItem(item: { id: string; name: string }) {
-    if (!project.value || project.value.entity_ids.includes(item.id)) return;
+    if (busy.value || !project.value || project.value.entity_ids.includes(item.id)) return;
     await setEntities([...project.value.entity_ids, item.id]);
   }
   async function unlinkItem(id: string) {
@@ -308,10 +309,10 @@
               {{ t("x.projects.card.target", { date: formatDate(project.target_date) }) }}
             </span>
             <span v-if="project.started_at" class="text-muted-foreground">
-              {{ t("x.projects.detail.started", { date: formatDate(project.started_at) }) }}
+              {{ t("x.projects.detail.started", { date: formatTimestamp(project.started_at) }) }}
             </span>
             <span v-if="project.completed_at" class="text-muted-foreground">
-              {{ t("x.projects.detail.completed", { date: formatDate(project.completed_at) }) }}
+              {{ t("x.projects.detail.completed", { date: formatTimestamp(project.completed_at) }) }}
             </span>
           </div>
 
@@ -384,7 +385,12 @@
             </Badge>
           </div>
           <div class="max-w-sm">
-            <ItemPicker :exclude="project.entity_ids" :placeholder="t('x.projects.items.add')" @pick="linkItem" />
+            <ItemPicker
+              :exclude="project.entity_ids"
+              :placeholder="t('x.projects.items.add')"
+              :disabled="busy"
+              @pick="linkItem"
+            />
           </div>
         </section>
 

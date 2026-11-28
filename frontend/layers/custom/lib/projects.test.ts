@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { XProject } from "./api/client";
-import { formatMoney, projectProgress, safeHttpUrl, shouldPromptDone } from "./projects";
+import { formatMoney, formatTimestamp, projectProgress, safeHttpUrl, shouldPromptDone } from "./projects";
 
 type Steps = Pick<XProject, "steps">["steps"];
 const steps = (...status: string[]) => status.map(s => ({ status: s })) as unknown as Steps;
@@ -60,5 +60,18 @@ describe("formatMoney", () => {
     expect(formatMoney(12.5, "EUR")).toContain("€");
     expect(formatMoney(12.5, "nope")).toContain("$");
     expect(formatMoney(null)).toContain("0.00");
+  });
+});
+
+describe("formatTimestamp", () => {
+  test("parses RFC3339 instants instead of truncating to the UTC date", () => {
+    const iso = "2026-11-28T00:30:00Z";
+    expect(formatTimestamp(iso)).toBe(new Date(iso).toLocaleDateString());
+  });
+
+  test("empty, zero and invalid values", () => {
+    expect(formatTimestamp(null)).toBe("");
+    expect(formatTimestamp("0001-01-01T00:00:00Z")).toBe("");
+    expect(formatTimestamp("garbage")).toBe("");
   });
 });

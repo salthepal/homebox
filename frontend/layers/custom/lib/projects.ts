@@ -49,6 +49,13 @@ export function formatDate(v: string | null | undefined): string {
   return new Date(y!, m! - 1, day).toLocaleDateString();
 }
 
+/** Formats an RFC3339 instant (started_at, completed_at) in the viewer's timezone. */
+export function formatTimestamp(v: string | null | undefined): string {
+  if (!v || v.startsWith("0001-01-01")) return "";
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString();
+}
+
 export function isStepFinished(s: XProjectStep): boolean {
   return s.status === "done" || s.status === "skipped";
 }
