@@ -14,18 +14,22 @@ import (
 	"github.com/sysadminsmedia/homebox/backend/internal/core/services"
 	xconfig "github.com/sysadminsmedia/homebox/backend/internal/custom/config"
 	xent "github.com/sysadminsmedia/homebox/backend/internal/custom/ent"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/gcal"
 )
 
 // Deps are the dependencies shared by custom handlers.
 type Deps struct {
 	Ent    *xent.Client
 	Config xconfig.Config
+	// Gcal overrides Google endpoints (tests point these at a fake); zero = real Google.
+	Gcal gcal.Options
 }
 
 // Mount registers the custom routes on r. userMW is upstream's authenticated-user
 // middleware stack (auth token, tenant, user role).
 func Mount(r chi.Router, chain *errchain.ErrChain, userMW []errchain.Middleware, d Deps) {
 	r.Get("/ping", chain.ToHandlerFunc(handlePing(d), userMW...))
+	mountGcal(r, chain, userMW, d)
 }
 
 // PingResponse proves the custom stack end to end: routing, auth, tenant and custom DB.

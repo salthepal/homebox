@@ -9,6 +9,57 @@ import (
 )
 
 var (
+	// XGcalConnectionsColumns holds the columns for the "x_gcal_connections" table.
+	XGcalConnectionsColumns = []*schema.Column{
+		{Name: "group_id", Type: field.TypeUUID},
+		{Name: "connected_by", Type: field.TypeUUID},
+		{Name: "google_email", Type: field.TypeString, Default: ""},
+		{Name: "calendar_id", Type: field.TypeString, Default: ""},
+		{Name: "calendar_summary", Type: field.TypeString, Default: ""},
+		{Name: "enc_refresh_token", Type: field.TypeBytes},
+		{Name: "include_completed", Type: field.TypeBool, Default: true},
+		{Name: "include_project_steps", Type: field.TypeBool, Default: true},
+		{Name: "reminder_minutes", Type: field.TypeInt, Default: 1440},
+		{Name: "broken", Type: field.TypeBool, Default: false},
+		{Name: "last_sync_at", Type: field.TypeTime, Nullable: true},
+		{Name: "last_error", Type: field.TypeString, Default: ""},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// XGcalConnectionsTable holds the schema information for the "x_gcal_connections" table.
+	XGcalConnectionsTable = &schema.Table{
+		Name:       "x_gcal_connections",
+		Columns:    XGcalConnectionsColumns,
+		PrimaryKey: []*schema.Column{XGcalConnectionsColumns[0]},
+	}
+	// XGcalLinksColumns holds the columns for the "x_gcal_links" table.
+	XGcalLinksColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "group_id", Type: field.TypeUUID},
+		{Name: "source_type", Type: field.TypeEnum, Enums: []string{"maintenance", "project_step"}},
+		{Name: "source_id", Type: field.TypeUUID},
+		{Name: "event_id", Type: field.TypeString},
+		{Name: "content_hash", Type: field.TypeString, Default: ""},
+		{Name: "synced_at", Type: field.TypeTime},
+	}
+	// XGcalLinksTable holds the schema information for the "x_gcal_links" table.
+	XGcalLinksTable = &schema.Table{
+		Name:       "x_gcal_links",
+		Columns:    XGcalLinksColumns,
+		PrimaryKey: []*schema.Column{XGcalLinksColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "xgcallink_group_id_source_type_source_id",
+				Unique:  true,
+				Columns: []*schema.Column{XGcalLinksColumns[1], XGcalLinksColumns[2], XGcalLinksColumns[3]},
+			},
+			{
+				Name:    "xgcallink_group_id_event_id",
+				Unique:  false,
+				Columns: []*schema.Column{XGcalLinksColumns[1], XGcalLinksColumns[4]},
+			},
+		},
+	}
 	// XMetaColumns holds the columns for the "x_meta" table.
 	XMetaColumns = []*schema.Column{
 		{Name: "key", Type: field.TypeString},
@@ -95,6 +146,8 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		XGcalConnectionsTable,
+		XGcalLinksTable,
 		XMetaTable,
 		XProjectsTable,
 		XProjectStepsTable,
@@ -102,6 +155,12 @@ var (
 )
 
 func init() {
+	XGcalConnectionsTable.Annotation = &entsql.Annotation{
+		Table: "x_gcal_connections",
+	}
+	XGcalLinksTable.Annotation = &entsql.Annotation{
+		Table: "x_gcal_links",
+	}
 	XMetaTable.Annotation = &entsql.Annotation{
 		Table: "x_meta",
 	}

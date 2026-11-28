@@ -6,6 +6,12 @@ import (
 	"entgo.io/ent/dialect/sql"
 )
 
+// XGcalConnection is the predicate function for xgcalconnection builders.
+type XGcalConnection func(*sql.Selector)
+
+// XGcalLink is the predicate function for xgcallink builders.
+type XGcalLink func(*sql.Selector)
+
 // XMeta is the predicate function for xmeta builders.
 type XMeta func(*sql.Selector)
 

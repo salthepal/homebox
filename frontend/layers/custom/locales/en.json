@@ -1,13 +1,63 @@
 {
   "x": {
     "menu": {
-      "projects": "Projects"
+      "projects": "Projects",
+      "calendar": "Calendar"
     },
     "projects": {
       "title": "Projects",
       "coming_soon": "Multi-step upgrade projects are coming soon.",
       "backend_ok": "Custom backend connected",
       "backend_error": "Custom backend not reachable"
+    },
+    "calendar": {
+      "title": "Google Calendar",
+      "intro": "Show scheduled and completed maintenance on a shared Google Calendar.",
+      "not_configured_title": "Google Calendar sync isn't set up on this server",
+      "not_configured_body": "Set these environment variables on the Homebox container, then restart it:",
+      "redirect_uri_hint": "Add this authorized redirect URI to your Google OAuth client:",
+      "connect": "Connect Google",
+      "connecting": "Redirecting to Google…",
+      "reconnect": "Reconnect Google",
+      "connected_as": "Connected as {email}",
+      "broken_title": "The Google connection stopped working",
+      "broken_body": "Google rejected the saved credentials, so syncing is paused. Reconnect to resume.",
+      "calendar": "Calendar",
+      "calendar_hint": "Only calendars you can edit are listed. Homebox only ever changes events it created.",
+      "calendar_placeholder": "Choose a calendar",
+      "calendars_failed": "Couldn't load your calendars",
+      "options": "Options",
+      "include_completed": "Keep completed maintenance on the calendar (marked ✅)",
+      "include_project_steps": "Include project steps that have a due date",
+      "reminder": "Reminder before scheduled maintenance",
+      "reminder_none": "No reminder",
+      "reminder_minutes": "{n} minutes before",
+      "reminder_hour": "1 hour before",
+      "reminder_day": "1 day before",
+      "reminder_2days": "2 days before",
+      "reminder_week": "1 week before",
+      "save": "Save settings",
+      "saved": "Calendar settings saved",
+      "save_failed": "Couldn't save settings",
+      "status": "Sync status",
+      "last_sync": "Last sync",
+      "never_synced": "Not synced yet",
+      "last_error": "Last error",
+      "no_calendar_chosen": "Choose a calendar to start syncing.",
+      "disconnect": "Disconnect",
+      "disconnect_title": "Disconnect Google Calendar?",
+      "disconnect_body": "Homebox will forget the Google connection. It never deletes your calendar.",
+      "disconnect_remove": "Also remove the events Homebox created",
+      "disconnect_cancel": "Cancel",
+      "disconnected": "Google Calendar disconnected",
+      "disconnected_removed": "Disconnected and removed {n} Homebox events",
+      "disconnected_skipped": "Disconnected. Events couldn't be removed because the connection was broken.",
+      "disconnect_failed": "Couldn't disconnect",
+      "toast_connected": "Google Calendar connected",
+      "toast_denied": "Google access was declined",
+      "toast_state": "The connection link expired. Try connecting again.",
+      "toast_failed": "Couldn't finish connecting to Google",
+      "load_failed": "Couldn't load calendar status"
     }
   }
 }
