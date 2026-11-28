@@ -4,6 +4,7 @@
 package gcaltest
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/google/uuid"
 
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/gcal"
 )
@@ -75,6 +78,15 @@ func (f *Fake) Options() gcal.Options {
 		TokenURL:  f.Server.URL + "/token",
 		RevokeURL: f.Server.URL + "/revoke",
 		APIBase:   f.Server.URL + "/calendar",
+		// Permissive defaults; tests that exercise membership or sweeping override these.
+		IsMember: func(context.Context, uuid.UUID, uuid.UUID) (bool, error) { return true, nil },
+		GroupsExist: func(_ context.Context, ids []uuid.UUID) (map[uuid.UUID]struct{}, error) {
+			m := make(map[uuid.UUID]struct{}, len(ids))
+			for _, id := range ids {
+				m[id] = struct{}{}
+			}
+			return m, nil
+		},
 	}
 }
 

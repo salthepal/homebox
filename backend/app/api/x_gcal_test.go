@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/hay-kot/httpkit/errchain"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
@@ -32,6 +34,14 @@ type gcalAPI struct {
 	fake  *gcaltest.Fake
 }
 
+// realGcalOptions is production's upstream wiring with Google's endpoints pointed at a fake.
+func realGcalOptions(a *app, fake *gcaltest.Fake) gcal.Options {
+	o := gcalOptions(a)
+	fo := fake.Options()
+	o.AuthURL, o.TokenURL, o.RevokeURL, o.APIBase = fo.AuthURL, fo.TokenURL, fo.RevokeURL, fo.APIBase
+	return o
+}
+
 func newGcalAPI(t *testing.T, configured bool) *gcalAPI {
 	t.Helper()
 	a, token, _, deps := newCustomTestApp(t)
@@ -42,7 +52,8 @@ func newGcalAPI(t *testing.T, configured bool) *gcalAPI {
 			SecretKey: bytes.Repeat([]byte{3}, 32), GcalSyncInterval: time.Minute * 15,
 		}
 	}
-	deps.Gcal = fake.Options()
+	// Real upstream membership/existence adapters, pointed at the fake Google.
+	deps.Gcal = realGcalOptions(a, fake)
 
 	r := chi.NewRouter()
 	chain := errchain.New(mid.Errors(zerolog.Nop()))
@@ -199,4 +210,65 @@ func TestCustomGcalCallbackFailures(t *testing.T) {
 
 	rec = g.do(http.MethodGet, "/api/v1/x/gcal/status", nil, true)
 	assert.False(t, decodeBody[gcal.Status](t, rec).Connected)
+}
+
+func TestCustomGcalCallbackRejectsNonMember(t *testing.T) {
+	a, _, gid, deps := newCustomTestApp(t)
+	fake := gcaltest.New(t)
+	key := bytes.Repeat([]byte{3}, 32)
+	cfg := xconfig.Config{
+		PublicBaseURL: gcalTestBaseURL, GoogleClientID: "id", GoogleClientSecret: "secret",
+		SecretKey: key, GcalSyncInterval: time.Minute * 15,
+	}
+	opts := realGcalOptions(a, fake)
+	r := chi.NewRouter()
+	chain := errchain.New(mid.Errors(zerolog.Nop()))
+	mountCustomRoutes(a, r, chain, xapi.Deps{Ent: deps.Ent, Config: cfg, Gcal: opts})
+
+	// A signed state for a user who is not in the group (e.g. removed after clicking Connect).
+	state, err := gcal.SignState(key, uuid.New(), gid, time.Now())
+	require.NoError(t, err)
+	cb := "/api/v1/x/gcal/callback?" + url.Values{"code": {gcaltest.Code}, "state": {state}}.Encode()
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, cb, nil))
+	require.Equal(t, http.StatusFound, rec.Code)
+	assert.Equal(t, gcalTestBaseURL+"/x/calendar?error=membership", rec.Header().Get("Location"))
+
+	conns, err := gcal.NewStore(deps.Ent).ListConnections(context.Background())
+	require.NoError(t, err)
+	assert.Empty(t, conns, "nothing stored")
+}
+
+func TestCustomGcalSweepOrphansWithRealGroups(t *testing.T) {
+	a, _, kept, deps := newCustomTestApp(t)
+	ctx := context.Background()
+	fake := gcaltest.New(t)
+	opts := realGcalOptions(a, fake)
+	cfg := xconfig.Config{
+		PublicBaseURL: gcalTestBaseURL, GoogleClientID: "id", GoogleClientSecret: "secret",
+		SecretKey: bytes.Repeat([]byte{3}, 32),
+	}
+	svc := gcal.New(deps.Ent, cfg, opts)
+
+	doomed, err := a.repos.Groups.GroupCreate(ctx, "doomed", uuid.Nil)
+	require.NoError(t, err)
+	enc, err := gcal.Encrypt(cfg.SecretKey, []byte(gcaltest.RefreshToken))
+	require.NoError(t, err)
+	for _, gid := range []uuid.UUID{kept, doomed.ID} {
+		require.NoError(t, svc.Store().SaveConnection(ctx, gid, uuid.New(), "e@example.com", enc))
+		require.NoError(t, svc.Store().UpsertLink(ctx, gid, gcal.SourceMaintenance, uuid.New(), "ev", "h", time.Now()))
+	}
+	require.NoError(t, a.db.Group.DeleteOneID(doomed.ID).Exec(ctx))
+
+	n, err := svc.SweepOrphans(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 1, n)
+	_, err = svc.Store().GetConnection(ctx, doomed.ID)
+	require.ErrorIs(t, err, gcal.ErrNotConnected)
+	links, err := svc.Store().ListLinks(ctx, doomed.ID)
+	require.NoError(t, err)
+	assert.Empty(t, links)
+	assert.Equal(t, gcaltest.RefreshToken, fake.Revoked)
+	_, err = svc.Store().GetConnection(ctx, kept)
+	require.NoError(t, err, "live group's connection kept")
 }

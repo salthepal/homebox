@@ -173,6 +173,8 @@
       toast.error(t("x.calendar.toast_denied"));
     } else if (error === "state") {
       toast.error(t("x.calendar.toast_state"));
+    } else if (error === "membership") {
+      toast.error(t("x.calendar.toast_membership"));
     } else {
       toast.error(t("x.calendar.toast_failed"));
     }
@@ -200,7 +202,8 @@
         {{ t("x.calendar.load_failed") }}
       </p>
 
-      <!-- Not configured: say exactly which variables are missing. -->
+      <!-- Not configured: say exactly which variables are missing. A stored connection can
+           still be disconnected locally (credentials are removed without calling Google). -->
       <div
         v-else-if="status && !status.enabled"
         class="flex flex-col gap-3 rounded-md border p-4"
@@ -215,6 +218,16 @@
           <p class="text-sm text-muted-foreground">{{ t("x.calendar.redirect_uri_hint") }}</p>
           <code class="break-all rounded bg-muted p-2 text-sm">{{ status.redirect_uri }}</code>
         </template>
+        <div
+          v-if="status.connected"
+          class="flex flex-wrap items-center justify-between gap-2 border-t pt-3"
+          data-testid="x-gcal-stored-connection"
+        >
+          <p class="text-sm">{{ t("x.calendar.connected_as", { email: status.google_email || "—" }) }}</p>
+          <Button variant="outline" size="sm" data-testid="x-gcal-disconnect" @click="disconnectOpen = true">
+            {{ t("x.calendar.disconnect") }}
+          </Button>
+        </div>
       </div>
 
       <!-- Configured, not connected. -->

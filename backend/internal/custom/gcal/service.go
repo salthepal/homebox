@@ -39,6 +39,9 @@ var (
 	ErrCalendarNotSet = errors.New("gcal: no calendar selected")
 	// ErrInvalidSetting is returned for settings that fail validation.
 	ErrInvalidSetting = errors.New("gcal: invalid setting")
+	// ErrNotMember means the user in a signed OAuth state is no longer a member of the group
+	// (or membership could not be checked), so the callback fails closed.
+	ErrNotMember = errors.New("gcal: user is not a member of the group")
 )
 
 // NotConfiguredError is returned while required HBOX_X_* variables are missing.
@@ -59,6 +62,12 @@ type Options struct {
 	Now        func() time.Time
 	Backoff    time.Duration
 	Sleep      func(ctx context.Context, d time.Duration) error
+
+	// IsMember reports whether the user belongs to the group. The OAuth callback bypasses
+	// auth middleware, so it revalidates membership with this; nil fails closed.
+	IsMember func(ctx context.Context, gid, uid uuid.UUID) (bool, error)
+	// GroupsExist returns the subset of ids that are existing upstream groups (orphan sweep).
+	GroupsExist func(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]struct{}, error)
 }
 
 // Service is the Google Calendar integration: connect flow, settings, authorized clients.
@@ -192,6 +201,16 @@ func (s *Service) HandleCallback(ctx context.Context, code, state string) (uuid.
 	if err != nil {
 		return uuid.Nil, err
 	}
+	if s.opt.IsMember == nil {
+		return gid, ErrNotMember
+	}
+	ok, err := s.opt.IsMember(ctx, gid, uid)
+	if err != nil {
+		return gid, fmt.Errorf("%w: %w", ErrNotMember, err)
+	}
+	if !ok {
+		return gid, ErrNotMember
+	}
 	if code == "" {
 		return gid, errors.New("gcal: missing authorization code")
 	}
@@ -322,10 +341,67 @@ func (s *Service) UpdateSettings(ctx context.Context, gid uuid.UUID, in Settings
 		if !found {
 			return fmt.Errorf("%w: calendar %q is not a calendar this account can write to", ErrInvalidSetting, id)
 		}
+		if err := s.switchCalendar(ctx, gid, id); err != nil {
+			return err
+		}
 	} else if _, err := s.store.GetConnection(ctx, gid); err != nil {
 		return err
 	}
 	return s.store.UpdateSettings(ctx, gid, upd)
+}
+
+// switchCalendar prepares for moving the group to calendar id. If a different calendar was
+// chosen before, our events are removed from it (best effort: skipped when the connection
+// is broken or Google isn't configured) and the group's links are dropped so the next sync
+// starts clean. A removal error aborts the switch with nothing changed.
+func (s *Service) switchCalendar(ctx context.Context, gid uuid.UUID, id string) error {
+	conn, err := s.store.GetConnection(ctx, gid)
+	if err != nil {
+		return err
+	}
+	if conn.CalendarID == "" || conn.CalendarID == id {
+		return nil
+	}
+	if !conn.Broken && s.requireConfigured() == nil {
+		if _, err := s.removeOurEvents(ctx, gid, conn); err != nil {
+			return err
+		}
+	}
+	_, err = s.store.DeleteLinks(ctx, gid)
+	return err
+}
+
+// SweepOrphans deletes connections (and their links) whose upstream group no longer exists,
+// after a best-effort token revoke. Google events are never touched: with the group gone
+// only the stored credentials and links remain to clean up. It returns how many were swept.
+func (s *Service) SweepOrphans(ctx context.Context) (int, error) {
+	if s.opt.GroupsExist == nil {
+		return 0, nil
+	}
+	conns, err := s.store.ListConnections(ctx)
+	if err != nil || len(conns) == 0 {
+		return 0, err
+	}
+	ids := make([]uuid.UUID, len(conns))
+	for i, c := range conns {
+		ids[i] = c.GroupID
+	}
+	alive, err := s.opt.GroupsExist(ctx, ids)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, c := range conns {
+		if _, ok := alive[c.GroupID]; ok {
+			continue
+		}
+		s.revoke(ctx, c)
+		if err := s.store.DeleteConnection(ctx, c.GroupID); err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
 }
 
 // DisconnectResult reports what Disconnect did.
