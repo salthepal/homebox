@@ -8,3 +8,9 @@ import (
 
 // XMeta is the predicate function for xmeta builders.
 type XMeta func(*sql.Selector)
+
+// XProject is the predicate function for xproject builders.
+type XProject func(*sql.Selector)
+
+// XProjectStep is the predicate function for xprojectstep builders.
+type XProjectStep func(*sql.Selector)

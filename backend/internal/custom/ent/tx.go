@@ -14,6 +14,10 @@ type Tx struct {
 	config
 	// XMeta is the client for interacting with the XMeta builders.
 	XMeta *XMetaClient
+	// XProject is the client for interacting with the XProject builders.
+	XProject *XProjectClient
+	// XProjectStep is the client for interacting with the XProjectStep builders.
+	XProjectStep *XProjectStepClient
 
 	// lazily loaded.
 	client     *Client
@@ -146,6 +150,8 @@ func (tx *Tx) Client() *Client {
 
 func (tx *Tx) init() {
 	tx.XMeta = NewXMetaClient(tx.config)
+	tx.XProject = NewXProjectClient(tx.config)
+	tx.XProjectStep = NewXProjectStepClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.
