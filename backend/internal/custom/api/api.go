@@ -28,10 +28,14 @@ type Deps struct {
 	// GcalReconciler serves "Sync now" (POST /gcal/sync); nil means sync isn't wired.
 	GcalReconciler *gcal.Reconciler
 
-	// Maintenance reads upstream maintenance entries for the ICS feed.
-	Maintenance gcal.MaintenanceLister
+	// IcsFeed reads upstream maintenance entries (bounded) for the ICS feed.
+	IcsFeed IcsFeedSource
+	// IcsGroups checks group ownership and existence for the ICS feed.
+	IcsGroups IcsGroups
 	// IcsLimiter overrides the feed's per-IP rate limiter (tests); nil = default.
 	IcsLimiter *ics.Limiter
+	// IcsFeedLimit overrides the feed's event cap (tests); 0 = default (5000).
+	IcsFeedLimit int
 }
 
 // Mount registers the custom routes on r. userMW is upstream's authenticated-user

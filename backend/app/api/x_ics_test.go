@@ -19,6 +19,7 @@ import (
 	xconfig "github.com/sysadminsmedia/homebox/backend/internal/custom/config"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ics"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/upstream"
+	"github.com/sysadminsmedia/homebox/backend/internal/data/ent/usergroup"
 	"github.com/sysadminsmedia/homebox/backend/internal/data/repo"
 	"github.com/sysadminsmedia/homebox/backend/internal/data/types"
 	"github.com/sysadminsmedia/homebox/backend/internal/web/mid"
@@ -32,15 +33,55 @@ type icsEnv struct {
 	r     chi.Router
 }
 
-func newIcsEnv(t *testing.T, limiter *ics.Limiter) icsEnv {
+// newIcsEnv wires the feed against real upstream tables. The test user starts as an owner
+// of the group (the feed can only be managed by owners); setOwner(false) demotes it.
+func newIcsEnv(t *testing.T, limiter *ics.Limiter, opts ...func(*xapi.Deps)) icsEnv {
 	t.Helper()
 	a, token, gid, deps := newCustomTestApp(t)
 	deps.Config = xconfig.Config{PublicBaseURL: gcalTestBaseURL}
-	deps.Maintenance = upstream.NewMaintenanceReader(a.db)
+	deps.IcsFeed = upstream.NewMaintenanceReader(a.db)
+	deps.IcsGroups = upstream.NewGroups(a.db)
 	deps.IcsLimiter = limiter
+	for _, o := range opts {
+		o(&deps)
+	}
 	r := chi.NewRouter()
 	mountCustomRoutes(a, r, errchain.New(mid.Errors(zerolog.Nop())), deps)
-	return icsEnv{a: a, token: token, gid: gid, deps: deps, r: r}
+	e := icsEnv{a: a, token: token, gid: gid, deps: deps, r: r}
+	e.setOwner(t, true)
+	return e
+}
+
+// setOwner makes the test user an owner of (true) or an ordinary member of (false) its group.
+func (e icsEnv) setOwner(t *testing.T, owner bool) {
+	t.Helper()
+	role := usergroup.RoleUser
+	if owner {
+		role = usergroup.RoleOwner
+	}
+	n, err := e.a.db.UserGroup.Update().Where(usergroup.GroupID(e.gid)).SetRole(role).Save(context.Background())
+	require.NoError(t, err)
+	require.Positive(t, n)
+}
+
+func (e icsEnv) get(path string, hdr map[string]string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	for k, v := range hdr {
+		req.Header.Set(k, v)
+	}
+	rec := httptest.NewRecorder()
+	e.r.ServeHTTP(rec, req)
+	return rec
+}
+
+func summaries(body string) []string {
+	var out []string
+	for _, l := range strings.Split(body, "\r\n") {
+		if strings.HasPrefix(l, "SUMMARY:") {
+			out = append(out, strings.TrimPrefix(l, "SUMMARY:"))
+		}
+	}
+	return out
 }
 
 func (e icsEnv) do(method, path string, authed bool) *httptest.ResponseRecorder {
@@ -120,7 +161,7 @@ func TestCustomIcsFeedLifecycle(t *testing.T) {
 	rec = e.do(http.MethodGet, path, false)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	assert.Equal(t, "text/calendar; charset=utf-8", rec.Header().Get("Content-Type"))
-	assert.Equal(t, "private, no-store", rec.Header().Get("Cache-Control"))
+	assert.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
 	body := rec.Body.String()
 	assert.True(t, strings.HasPrefix(body, "BEGIN:VCALENDAR\r\n"))
 	assert.True(t, strings.HasSuffix(body, "END:VCALENDAR\r\n"))

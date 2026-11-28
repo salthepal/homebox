@@ -90,6 +90,22 @@ func (s *Store) Revoke(ctx context.Context, gid uuid.UUID) error {
 	return err
 }
 
+// GroupIDs lists the groups that have a feed row (for the orphan sweep).
+func (s *Store) GroupIDs(ctx context.Context) ([]uuid.UUID, error) {
+	return s.ent.XIcsFeed.Query().IDs(ctx)
+}
+
+// DeleteForGroups deletes the feed rows of the given groups and returns how many were
+// removed. The orphan sweep calls it with the IDs of groups that no longer exist (upstream
+// tables can't cascade into ours, R4). TODO(wire): register it in the daily sweep once a
+// sweep task exists on this branch's base.
+func (s *Store) DeleteForGroups(ctx context.Context, ids []uuid.UUID) (int, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	return s.ent.XIcsFeed.Delete().Where(xicsfeed.IDIn(ids...)).Exec(ctx)
+}
+
 // Lookup resolves a presented token to its group. Unknown, malformed and revoked tokens are
 // all the same (uuid.Nil, false, nil): callers must answer them identically. The stored hash
 // is compared in constant time.
