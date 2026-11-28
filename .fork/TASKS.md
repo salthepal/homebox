@@ -67,20 +67,33 @@ Tables from PLAN §6 as `00002_x_projects.sql` (postgres + sqlite3), ent schemas
 
 **Status (2026-11-28):** done. Repo tests pass on SQLite and Postgres 16 (CRUD, status timestamps, cross-group isolation on every method, reorder validation, cascade at repo and DB level). `x_project_entities` has no ent schema (composite key with no upstream edge), so the repo reads and writes it with plain SQL on the same `*sql.DB` (`$n` vs `?` placeholders by dialect). `Repo.CompleteStep` stores the completion details, and the P2 service creates the maintenance entry first and passes its ID in.
 
-### [ ] P2 · Service, API, adapters, sweeper
+### [x] P2 · Service, API, adapters, sweeper
 - `internal/custom/upstream/entities.go` (exists-in-group checks, names for display) and `upstream/maintenance.go` (create entry, exists check), wrapping upstream repos.
 - Service rules from PLAN §6 (status suggestions, complete-step → maintenance entry).
 - Handlers in `internal/custom/api/projects.go` for every route in PLAN §6. Input validation, 404 for other groups' IDs.
 - Daily sweeper task registered in `registerCustom`.
 **Done when:** API tests (httptest through the real middleware) cover happy paths, a cross-group 404, and complete-step creating a real upstream maintenance entry. BE + BE-PG pass.
 
-### [ ] P3 · Projects UI
+**Status (2026-11-28):** done (stacked on P1). Adapters in `upstream/entities.go` (names, exists-in-group; bulk reads via upstream's ent client) and `upstream/maintenance.go` (create completed entry via upstream's repo, delete, exists-in-group). Service rules and the daily sweeper (`x-projects-sweep`, registered in `registerCustom`) are in `internal/custom/projects` (`service.go`, `sweep.go`). Handlers: `internal/custom/api/projects.go` (JSON is snake_case, dates `YYYY-MM-DD`; step/project bodies are full replaces; unknown fields are rejected). API tests are in `backend/app/api/x_projects_test.go` (`TestCustomProjects*`) and pass on SQLite and Postgres 16. Error mapping: other group's or missing ID → 404; validation, unknown item, bad IDs → 400; completing a done step → 409.
+
+**Review follow-up (x/p2-review-fixes):**
+- Completion claims the step atomically (`Repo.ClaimStep`, conditional `status <> done` update) before the maintenance entry is created; losers get 409. A failed entry/record step deletes the entry and reverts the claim (`ReleaseStep`).
+- Ordinary step create/update can't set `done` (400, points at `/complete`); editing a done step or leaving done still works.
+- Request bodies must be exactly one JSON value (trailing data → 400).
+- Auto-start uses `Repo.StartProject` (updates only status + started_at, only from idea/planning), inside the same transaction as the step insert/update, and only when a step moves INTO doing.
+- Project names and step titles are limited to 255 bytes (ent's `MaxLen` counts bytes; stricter than VARCHAR(255) characters) so users get 400 instead of 500. Costs and budget must be finite, >= 0, < 1e12, at most 2 decimals (rejected, not rounded), and are stored normalised. Both checks live in the repo (`validate.go`) so every caller is covered.
+
+### [x] P3 · Projects UI
 Pages `/x/projects` and `/x/projects/[id]` per PLAN §6. Use existing shadcn components from `frontend/components/ui` (import them explicitly). Strings in the layer locale. Responsive.
 **Done when:** FE passes. Manual check: create a project, add, reorder and complete steps, link two items, and confirm progress and cost totals update. Screenshots in the PR.
 
-### [ ] P4 · Item tab + maintenance logging UX
+**Status (2026-11-28):** done (stacked on P2). Pages `/x/projects` (status board: grid of sections, terminal statuses hidden while empty) and `/x/projects/[id]` (status select, edit/delete, linked-item picker, step list with up/down reorder, per-step status, complete dialog, "all steps done, mark project done?" prompt). Verified in Playwright against a real backend on Postgres: created a project, linked two items, added three steps, reordered, completed steps (with "log as maintenance" on), and the progress, estimated and spent totals updated. The NAS item then had two new maintenance entries (cost 75.25 and 0, "From project: ..."). Screenshots are in `.fork/screenshots/p3/`. UI pieces P4 can reuse: `components/ProjectCard.vue`, `ProjectFormDialog.vue`, `StepCompleteDialog.vue`, `ItemPicker.vue`, `composables/useItemNames.ts`, `lib/projects.ts` helpers, and the project methods on `CustomApi` (`projectsForEntity` is already there).
+
+### [x] P4 · Item tab + maintenance logging UX
 `customItemTabs` returns the "Projects" tab. `pages/item/[id]/index/projects.vue` lists linked projects with "New project for this item" (pre-linked). The complete-step dialog has a "log as maintenance" toggle (default on when the step has an item).
 **Done when:** completing a step from the UI shows a new entry on the item's Maintenance tab.
+
+**Status (2026-11-28):** done (stacked on P3). `customItemTabs` returns one "Projects" tab (`x.projects.item_tab.title`) after Maintenance; the seam spread already existed, so no new seam. The tab page lists linked projects with `ProjectCard` and has "New project for this item", which creates the project and then links the item with `setProjectEntities` (if linking fails the user gets a toast and still lands on the project page). The complete dialog already defaulted the toggle on when the step has an item (P3's `StepCompleteDialog`), so no change was needed there. Verified in Playwright against a real backend on Postgres: the tab shows the linked project, a new project from the tab opens already linked to the item, the toggle is checked by default, and completing the step created "Install 10GbE NIC" (cost 80, "From project: …") on the item's Maintenance tab. Note that upstream's Maintenance tab defaults to the "Scheduled" filter, so a completed entry appears under "Completed" or "Both". Screenshots are in `.fork/screenshots/p4/`.
 
 ---
 
@@ -97,6 +110,7 @@ Pages `/x/projects` and `/x/projects/[id]` per PLAN §6. Use existing shadcn com
 **Status (2026-11-28):** code done, real-Google check **pending the Unraid deploy**.
 - Backend: `gcal/{crypto,state,client,store,service}.go` (the signed-state and OAuth config code is in `state.go` and `service.go`, not a separate `oauth.go`), ent schemas + `00003_x_gcal.sql`, handlers in `internal/custom/api/gcal.go` (`mountGcal`; callback is the only route without `userMW`). Tests run against an in-memory fake Google (`gcal/gcaltest`, reusable by G2): crypto, state forgery/expiry, client retry/backoff, connect flow, picker (read-only calendars excluded), broken-token handling, disconnect safety (only events that are in `x_gcal_links` AND carry the Homebox marker are deleted), plus HTTP tests through the real middleware in `app/api/x_gcal_test.go`. BE, BE-PG, FE (lint, typecheck) and SEAM pass.
 - UI: `/x/calendar` (not-configured view lists the missing env vars and the redirect URI, connect, broken/Reconnect, calendar picker, options, sync status, disconnect with "also remove events") and a "Calendar" nav entry. Browser-checked against a local backend: missing-vars view, Connect → Google consent URL with the right client_id, redirect_uri, `access_type=offline`, `prompt=consent`, scopes and state, and the declined-consent toast.
+- Reconnect semantics: reconnecting with the same Google account keeps the calendar choice and links. A different account clears the calendar and drops the group's links (the old events stay on the old account's calendar, since the old credentials can't remove them). The Google token is revoked only when no other group's connection uses the same account (Google revokes per account and client). Switching away from a deleted/inaccessible calendar (404/410) just drops the links.
 - Deviations: `x_gcal_connections.broken` boolean added (PLAN's table has no column for the "mark connection broken" state). "Sync now" and `/gcal/sync` are G2's. The Projects-page link to `/x/calendar` is left to P3 (it owns those pages).
 - **Owner must do before the real-flow check:** (1) in Google Cloud Console enable the Google Calendar API, create an OAuth client of type *Web application*, and add the authorized redirect URI `{HBOX_X_PUBLIC_BASE_URL}/api/v1/x/gcal/callback` (the `/x/calendar` page shows the exact value once the base URL is set); (2) set the OAuth consent screen's publishing status to **In production**, since in Testing mode refresh tokens die after 7 days (an unverified app shows a warning screen; for a personal app, continue past it); (3) set `HBOX_X_PUBLIC_BASE_URL`, `HBOX_X_GOOGLE_CLIENT_ID`, `HBOX_X_GOOGLE_CLIENT_SECRET` and `HBOX_X_SECRET_KEY` (`openssl rand -base64 32`) on the Unraid container; (4) back up Postgres first (migration 00003); (5) open `/x/calendar`, Connect, and check the household calendar appears in the picker.
 
@@ -141,3 +155,5 @@ Per-group revocable token (stored hashed), `GET /api/v1/x/calendar/{token}.ics`,
 - **Frontend API:** add methods to `CustomApi` in `layers/custom/lib/api/client.ts` and use `useCustomApi()`. It shares upstream's auth, X-Tenant and 401 handling.
 - **Browser check:** `pnpm dev --port 3000` in `frontend/` proxies `/api` to `localhost:7745`. Run the backend binary on 7745. The first page load takes ~1–3 min while Vite pre-bundles.
 - **Local Postgres in a cloud session:** `/usr/lib/postgresql/16/bin/initdb` + `pg_ctl` as the `postgres` user, data dir under `/var/tmp`. `TEST_X_PG_DSN=postgres://postgres@localhost:5432/postgres?sslmode=disable`.
+- **Custom dialogs:** upstream's `Dialog` is bound to a fixed `DialogID` enum in `dialog-provider`, so layer dialogs use reka-ui's `DialogRoot` with `v-model:open` and the `ui/dialog` content parts instead.
+- **Custom JSON is snake_case:** `CustomApi` types mirror the Go handlers (`target_date`, `entity_ids`, ...), not upstream's camelCase.

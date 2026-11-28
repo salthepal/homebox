@@ -41,7 +41,7 @@ func newSyncEnv(t *testing.T) syncEnv {
 	a, token, gid, deps := newCustomTestApp(t)
 	fake := gcaltest.New(t)
 	xcfg := xconfig.Config{
-		PublicBaseURL: gcalTestBaseURL, GoogleClientID: "id", GoogleClientSecret: "secret",
+		PublicBaseURL: gcalTestBaseURL, GoogleClientID: "id", GoogleClientSecret: gcalTestSecret,
 		SecretKey: bytes.Repeat([]byte{3}, 32), GcalSyncInterval: 15 * time.Minute,
 	}
 	opts := fake.Options()
@@ -222,7 +222,7 @@ func chiWithReconciler(t *testing.T, g *gcalAPI) chi.Router {
 	a, token, _, deps := newCustomTestApp(t)
 	g.token = token
 	xcfg := xconfig.Config{
-		PublicBaseURL: gcalTestBaseURL, GoogleClientID: "id", GoogleClientSecret: "secret",
+		PublicBaseURL: gcalTestBaseURL, GoogleClientID: "id", GoogleClientSecret: gcalTestSecret,
 		SecretKey: bytes.Repeat([]byte{3}, 32), GcalSyncInterval: time.Minute,
 	}
 	deps.Config, deps.Gcal = xcfg, g.fake.Options()

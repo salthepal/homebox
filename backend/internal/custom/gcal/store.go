@@ -85,13 +85,29 @@ func (s *Store) GetConnection(ctx context.Context, gid uuid.UUID) (Connection, e
 }
 
 // SaveConnection creates the group's connection, or on reconnect replaces the token and
-// account while keeping the chosen calendar and options. It clears the broken flag and
-// last error.
+// account. A reconnect with the same account (a token refresh) keeps the chosen calendar,
+// options and links. A reconnect with a DIFFERENT Google account clears the calendar choice
+// and drops the group's links in the same transaction: the old events can't be removed
+// (the old credentials are gone), so they stay on the old account's calendar, and keeping
+// the links would make those sources look already synced and never reach the new calendar.
+// It clears the broken flag and last error.
 func (s *Store) SaveConnection(ctx context.Context, gid, uid uuid.UUID, email string, encToken []byte) error {
-	existing, err := s.ent.XGcalConnection.Get(ctx, gid)
+	tx, err := s.ent.Tx(ctx)
+	if err != nil {
+		return err
+	}
+	if err := saveConnectionTx(ctx, tx, gid, uid, email, encToken); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return tx.Commit()
+}
+
+func saveConnectionTx(ctx context.Context, tx *xent.Tx, gid, uid uuid.UUID, email string, encToken []byte) error {
+	existing, err := tx.XGcalConnection.Get(ctx, gid)
 	switch {
 	case xent.IsNotFound(err):
-		return s.ent.XGcalConnection.Create().
+		return tx.XGcalConnection.Create().
 			SetID(gid).SetConnectedBy(uid).SetGoogleEmail(email).
 			SetEncRefreshToken(encToken).Exec(ctx)
 	case err != nil:
@@ -101,10 +117,23 @@ func (s *Store) SaveConnection(ctx context.Context, gid, uid uuid.UUID, email st
 		SetConnectedBy(uid).SetGoogleEmail(email).
 		SetEncRefreshToken(encToken).SetBroken(false).SetLastError("")
 	if existing.GoogleEmail != "" && email != "" && existing.GoogleEmail != email {
-		// A different Google account: the old calendar choice no longer applies.
 		u.SetCalendarID("").SetCalendarSummary("")
+		if _, err := tx.XGcalLink.Delete().Where(xgcallink.GroupID(gid)).Exec(ctx); err != nil {
+			return err
+		}
 	}
 	return u.Exec(ctx)
+}
+
+// OtherConnectionsWithEmail counts connections of other groups that use the same Google
+// account. Google revokes a grant per account and client, so a token may only be revoked
+// when this is zero.
+func (s *Store) OtherConnectionsWithEmail(ctx context.Context, gid uuid.UUID, email string) (int, error) {
+	if email == "" {
+		return 0, nil
+	}
+	return s.ent.XGcalConnection.Query().
+		Where(xgcalconnection.IDNEQ(gid), xgcalconnection.GoogleEmail(email)).Count(ctx)
 }
 
 // UpdateSettings patches the connection's calendar and options.

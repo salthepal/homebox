@@ -259,7 +259,10 @@ func (c *Client) do(ctx context.Context, method, path string, q url.Values, in, 
 		}
 
 		lastErr = parseAPIError(resp.StatusCode, data)
-		retryable := resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
+		// A 5xx on a POST may mean Google created the event anyway, so retrying could
+		// duplicate it: POSTs retry on 429 only.
+		retryable := resp.StatusCode == http.StatusTooManyRequests ||
+			(resp.StatusCode >= 500 && method != http.MethodPost)
 		if !retryable || attempt == maxAttempts {
 			return lastErr
 		}

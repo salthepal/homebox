@@ -146,6 +146,8 @@ func (h *gcalHandlers) callback(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, gcal.ErrInvalidState):
 			back("error", "state")
+		case errors.Is(err, gcal.ErrNotMember):
+			back("error", "membership")
 		default:
 			back("error", "failed")
 		}

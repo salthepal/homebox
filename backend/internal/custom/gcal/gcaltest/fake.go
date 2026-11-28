@@ -4,6 +4,7 @@
 package gcaltest
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/google/uuid"
 
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/gcal"
 )
@@ -41,6 +44,8 @@ type Fake struct {
 	// FailNext makes the next N API (not token) requests return FailStatus.
 	FailNext   int
 	FailStatus int
+	// Gone lists calendar IDs whose events endpoints return 404 (deleted or inaccessible).
+	Gone map[string]bool
 	// Requests logs "METHOD path" for every API request, in order.
 	Requests []string
 
@@ -75,6 +80,15 @@ func (f *Fake) Options() gcal.Options {
 		TokenURL:  f.Server.URL + "/token",
 		RevokeURL: f.Server.URL + "/revoke",
 		APIBase:   f.Server.URL + "/calendar",
+		// Permissive defaults; tests that exercise membership or sweeping override these.
+		IsMember: func(context.Context, uuid.UUID, uuid.UUID) (bool, error) { return true, nil },
+		GroupsExist: func(_ context.Context, ids []uuid.UUID) (map[uuid.UUID]struct{}, error) {
+			m := make(map[uuid.UUID]struct{}, len(ids))
+			for _, id := range ids {
+				m[id] = struct{}{}
+			}
+			return m, nil
+		},
 	}
 }
 
@@ -192,6 +206,10 @@ func (f *Fake) api(w http.ResponseWriter, r *http.Request) {
 	calID, err := url.PathUnescape(parts[0])
 	if err != nil || len(parts) < 2 || parts[1] != "events" {
 		gerr(w, http.StatusNotFound, "notFound", "not found")
+		return
+	}
+	if f.Gone[calID] {
+		gerr(w, http.StatusNotFound, "notFound", "Not Found")
 		return
 	}
 	if f.Events[calID] == nil {
