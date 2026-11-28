@@ -26,6 +26,8 @@ type Deps struct {
 	Gcal gcal.Options
 
 	Projects *projects.Service // Feature 1 (P2)
+	// GcalReconciler serves "Sync now" (POST /gcal/sync); nil means sync isn't wired.
+	GcalReconciler *gcal.Reconciler
 }
 
 // Mount registers the custom routes on r. userMW is upstream's authenticated-user

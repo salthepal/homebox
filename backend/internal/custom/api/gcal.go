@@ -21,19 +21,73 @@ import (
 // authenticated by the signed, expiring state value instead.
 func mountGcal(r chi.Router, chain *errchain.ErrChain, userMW []errchain.Middleware, d Deps) {
 	svc := gcal.New(d.Ent, d.Config, d.Gcal)
-	h := &gcalHandlers{svc: svc, baseURL: d.Config.PublicBaseURL}
+	h := &gcalHandlers{svc: svc, baseURL: d.Config.PublicBaseURL, rec: d.GcalReconciler}
 
 	r.Get("/gcal/status", chain.ToHandlerFunc(h.status, userMW...))
 	r.Post("/gcal/connect", chain.ToHandlerFunc(h.connect, userMW...))
 	r.Get("/gcal/calendars", chain.ToHandlerFunc(h.calendars, userMW...))
 	r.Put("/gcal/settings", chain.ToHandlerFunc(h.settings, userMW...))
 	r.Post("/gcal/disconnect", chain.ToHandlerFunc(h.disconnect, userMW...))
+	r.Post("/gcal/sync", chain.ToHandlerFunc(h.sync, userMW...))
 	r.Get("/gcal/callback", h.callback) // deliberately no userMW
 }
 
 type gcalHandlers struct {
 	svc     *gcal.Service
 	baseURL string
+	rec     *gcal.Reconciler
+}
+
+// syncResponse is returned by "Sync now": what changed, plus the refreshed status (last sync
+// time and error) for the settings page. When some entries synced and others failed, the
+// same body comes back with a 5xx status and Error set, so the page can still show what was
+// done alongside what went wrong.
+type syncResponse struct {
+	Result gcal.Result `json:"result"`
+	Status gcal.Status `json:"status"`
+	Error  string      `json:"error,omitempty"`
+}
+
+func (h *gcalHandlers) sync(w http.ResponseWriter, r *http.Request) error {
+	auth := services.NewContext(r.Context())
+	if h.rec == nil {
+		return validate.NewRequestError(errors.New("google calendar sync is not available"), http.StatusConflict)
+	}
+	res, syncErr := h.rec.Reconcile(r.Context(), auth.GID)
+	if syncErr != nil && !isPartialSyncError(syncErr) {
+		// Nothing was attempted (not connected, broken, not configured, no calendar).
+		return gcalError(syncErr)
+	}
+	st, err := h.svc.Status(r.Context(), auth.GID)
+	if err != nil {
+		return err
+	}
+	if syncErr == nil {
+		return server.JSON(w, http.StatusOK, syncResponse{Result: res, Status: st})
+	}
+
+	// Some work may have been done before the failure: keep it in the response.
+	status := http.StatusInternalServerError
+	var ae *gcal.APIError
+	if errors.As(syncErr, &ae) {
+		status = http.StatusBadGateway
+	}
+	return server.JSON(w, status, syncResponse{Result: res, Status: st, Error: syncErr.Error()})
+}
+
+// isPartialSyncError reports whether a Reconcile error came from running the sync (a Google
+// or database failure, possibly after other entries synced) rather than from the sync being
+// impossible to start.
+func isPartialSyncError(err error) bool {
+	var nc *gcal.NotConfiguredError
+	switch {
+	case errors.As(err, &nc),
+		errors.Is(err, gcal.ErrNotConnected),
+		errors.Is(err, gcal.ErrBroken),
+		errors.Is(err, gcal.ErrCalendarNotSet):
+		return false
+	}
+	return true
 }
 
 func (h *gcalHandlers) status(w http.ResponseWriter, r *http.Request) error {
@@ -143,6 +197,8 @@ func gcalError(err error) error {
 		return validate.NewRequestError(errors.New("google connection is broken, reconnect Google Calendar"), http.StatusConflict)
 	case errors.Is(err, gcal.ErrInvalidSetting):
 		return validate.NewRequestError(err, http.StatusBadRequest)
+	case errors.Is(err, gcal.ErrCalendarNotSet):
+		return validate.NewRequestError(errors.New("choose a calendar first"), http.StatusConflict)
 	}
 	var ae *gcal.APIError
 	if errors.As(err, &ae) {

@@ -44,6 +44,14 @@ export type XGcalDisconnectResult = {
   remove_skipped: boolean;
 };
 
+// ---- Google Calendar sync (G2) ----
+export type XGcalSyncResult = {
+  result: { inserted: number; patched: number; deleted: number; relinked: number; unchanged: number };
+  status: XGcalStatus;
+  /** Set (with a 5xx status) when some entries synced and others failed. */
+  error?: string;
+};
+
 /** Error body shape of the custom API (same as upstream's). */
 export type XError = { error?: string };
 
@@ -205,6 +213,12 @@ export class CustomApi extends BaseAPI {
 
   projectsForEntity(entity_id: string) {
     return this.http.get<XProject[]>({ url: route(`/x/entities/${entity_id}/projects`) });
+  }
+
+  // ---- Google Calendar sync (G2) ----
+  /** "Sync now": reconcile this group's calendar immediately. */
+  gcalSync() {
+    return this.http.post<undefined, XGcalSyncResult & XError>({ url: route("/x/gcal/sync") });
   }
 }
 

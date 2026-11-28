@@ -51,6 +51,7 @@ func registerCustom(a *app, cfg *config.Config, router *chi.Mux, chain *errchain
 	xc := xent.NewClient(xent.Driver(entsql.OpenDB(dialect, db)))
 	gcalOpts := gcalOptions(a)
 	deps := xapi.Deps{Ent: xc, Config: xcfg, Gcal: gcalOpts, Projects: newProjectsService(a, xc, db, dialect)}
+	registerCustomGcal(a, xcfg, xc, runner, &deps)
 	mountCustomRoutes(a, router, chain, deps)
 
 	if missing := xcfg.GcalMissing(); len(missing) > 0 {

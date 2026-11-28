@@ -27,6 +27,9 @@ import (
 // gcalTestBaseURL is the public base URL used by the gcal tests in this package.
 const gcalTestBaseURL = "https://homebox.example.org"
 
+// gcalTestSecret is the fake Google client secret used by the gcal tests in this package.
+const gcalTestSecret = "secret"
+
 type gcalAPI struct {
 	t     *testing.T
 	r     chi.Router
@@ -48,7 +51,7 @@ func newGcalAPI(t *testing.T, configured bool) *gcalAPI {
 	fake := gcaltest.New(t)
 	if configured {
 		deps.Config = xconfig.Config{
-			PublicBaseURL: gcalTestBaseURL, GoogleClientID: "id", GoogleClientSecret: "secret",
+			PublicBaseURL: gcalTestBaseURL, GoogleClientID: "id", GoogleClientSecret: gcalTestSecret,
 			SecretKey: bytes.Repeat([]byte{3}, 32), GcalSyncInterval: time.Minute * 15,
 		}
 	}
@@ -217,7 +220,7 @@ func TestCustomGcalCallbackRejectsNonMember(t *testing.T) {
 	fake := gcaltest.New(t)
 	key := bytes.Repeat([]byte{3}, 32)
 	cfg := xconfig.Config{
-		PublicBaseURL: gcalTestBaseURL, GoogleClientID: "id", GoogleClientSecret: "secret",
+		PublicBaseURL: gcalTestBaseURL, GoogleClientID: "id", GoogleClientSecret: gcalTestSecret,
 		SecretKey: key, GcalSyncInterval: time.Minute * 15,
 	}
 	opts := realGcalOptions(a, fake)
@@ -245,7 +248,7 @@ func TestCustomGcalSweepOrphansWithRealGroups(t *testing.T) {
 	fake := gcaltest.New(t)
 	opts := realGcalOptions(a, fake)
 	cfg := xconfig.Config{
-		PublicBaseURL: gcalTestBaseURL, GoogleClientID: "id", GoogleClientSecret: "secret",
+		PublicBaseURL: gcalTestBaseURL, GoogleClientID: "id", GoogleClientSecret: gcalTestSecret,
 		SecretKey: bytes.Repeat([]byte{3}, 32),
 	}
 	svc := gcal.New(deps.Ent, cfg, opts)
