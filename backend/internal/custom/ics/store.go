@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,6 +15,9 @@ import (
 	xent "github.com/sysadminsmedia/homebox/backend/internal/custom/ent"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xicsfeed"
 )
+
+// issueAttempts bounds the update/insert retry in Issue.
+const issueAttempts = 5
 
 // maxTokenLen bounds what Lookup will hash; real tokens are 43 characters.
 const maxTokenLen = 128
@@ -55,20 +59,33 @@ func (s *Store) Issue(ctx context.Context, gid, uid uuid.UUID) (string, error) {
 	}
 	h := hashToken(token)
 
-	n, err := s.ent.XIcsFeed.Update().
-		Where(xicsfeed.ID(gid)).
-		SetTokenHash(h).
-		SetRotatedAt(time.Now().UTC()).
-		Save(ctx)
-	if err != nil {
-		return "", err
-	}
-	if n == 0 {
-		if err := s.ent.XIcsFeed.Create().SetID(gid).SetTokenHash(h).SetCreatedBy(uid).Exec(ctx); err != nil {
+	// Each statement is atomic, so concurrent first-time issuers can only collide on the
+	// insert (unique group_id). The loser retries as an update, so nobody sees an error and
+	// the last write wins: exactly one token, the last one stored, is valid afterwards.
+	// (An ON CONFLICT upsert would need ent's sql/upsert feature, which would regenerate
+	// every other custom entity.)
+	for attempt := 0; attempt < issueAttempts; attempt++ {
+		n, err := s.ent.XIcsFeed.Update().
+			Where(xicsfeed.ID(gid)).
+			SetTokenHash(h).
+			SetRotatedAt(time.Now().UTC()).
+			Save(ctx)
+		if err != nil {
 			return "", err
 		}
+		if n > 0 {
+			return token, nil
+		}
+		err = s.ent.XIcsFeed.Create().SetID(gid).SetTokenHash(h).SetCreatedBy(uid).Exec(ctx)
+		if err == nil {
+			return token, nil
+		}
+		if !xent.IsConstraintError(err) {
+			return "", err
+		}
+		// Someone else created the row between our update and insert: update it next time.
 	}
-	return token, nil
+	return "", errors.New("ics: could not store feed token after concurrent updates")
 }
 
 // Status reports whether the group has a feed.

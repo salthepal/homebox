@@ -11,8 +11,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/migrate"
-	"github.com/sysadminsmedia/homebox/backend/internal/data/ent"
 
+	"entgo.io/ent"
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"

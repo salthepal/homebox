@@ -32,43 +32,60 @@
     return s ? new Date(s).toLocaleString() : "";
   }
 
+  // A request can reject outright (offline, proxy error) instead of returning an error
+  // response, so every call is wrapped: busy always resets, dialogs always close, and the
+  // user always gets the failure message.
   async function load() {
-    const resp = await api.icsStatus();
-    if (resp.error) {
+    try {
+      const resp = await api.icsStatus();
+      if (resp.error) {
+        loadFailed.value = true;
+        return;
+      }
+      loadFailed.value = false;
+      status.value = resp.data;
+    } catch {
       loadFailed.value = true;
-      return;
     }
-    loadFailed.value = false;
-    status.value = resp.data;
   }
 
   async function issue(rotating: boolean) {
     busy.value = true;
-    const resp = await api.icsIssue();
-    busy.value = false;
-    rotateOpen.value = false;
-    if (resp.error || !resp.data.url) {
-      toast.error(resp.data?.error ?? t("x.calendar.feed_failed"));
-      return;
+    try {
+      const resp = await api.icsIssue();
+      if (resp.error || !resp.data?.url) {
+        toast.error(resp.data?.error ?? t("x.calendar.feed_failed"));
+        return;
+      }
+      // The server may return a root-relative path when no public base URL is configured.
+      url.value = new URL(resp.data.url, window.location.origin).toString();
+      status.value = { exists: true, created_at: resp.data.created_at, rotated_at: resp.data.rotated_at };
+      toast.success(t(rotating ? "x.calendar.feed_rotated" : "x.calendar.feed_created"));
+    } catch {
+      toast.error(t("x.calendar.feed_failed"));
+    } finally {
+      busy.value = false;
+      rotateOpen.value = false;
     }
-    // The server may return a root-relative path when no public base URL is configured.
-    url.value = new URL(resp.data.url, window.location.origin).toString();
-    status.value = { exists: true, created_at: resp.data.created_at, rotated_at: resp.data.rotated_at };
-    toast.success(t(rotating ? "x.calendar.feed_rotated" : "x.calendar.feed_created"));
   }
 
   async function revoke() {
     busy.value = true;
-    const resp = await api.icsRevoke();
-    busy.value = false;
-    revokeOpen.value = false;
-    if (resp.error) {
+    try {
+      const resp = await api.icsRevoke();
+      if (resp.error) {
+        toast.error(t("x.calendar.feed_failed"));
+        return;
+      }
+      url.value = "";
+      status.value = { exists: false, created_at: null, rotated_at: null };
+      toast.success(t("x.calendar.feed_revoked"));
+    } catch {
       toast.error(t("x.calendar.feed_failed"));
-      return;
+    } finally {
+      busy.value = false;
+      revokeOpen.value = false;
     }
-    url.value = "";
-    status.value = { exists: false, created_at: null, rotated_at: null };
-    toast.success(t("x.calendar.feed_revoked"));
   }
 
   async function copy() {
