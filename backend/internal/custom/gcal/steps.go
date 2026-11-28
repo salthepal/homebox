@@ -21,9 +21,12 @@ type StepItem struct {
 	Notes       string
 	URL         string
 	Done        bool
-	DueDate     time.Time
-	EstCost     float64
-	ActualCost  float64
+	// MaintenanceLogged is set when completing the step created a maintenance entry, which
+	// already has its own ✅ event on the completion date.
+	MaintenanceLogged bool
+	DueDate           time.Time
+	EstCost           float64
+	ActualCost        float64
 }
 
 // StepLister is the read side of project steps with due dates.
@@ -34,14 +37,19 @@ type StepLister interface {
 // EntStepLister reads steps from the custom ent client (x_projects, x_project_steps).
 type EntStepLister struct{ Ent *xent.Client }
 
-// ListDueSteps returns the group's steps that have a due date, except skipped steps and
-// steps of cancelled projects (nothing is going to happen for them).
+// ListDueSteps returns the group's steps that have a due date, except skipped steps and the
+// not-done steps of cancelled projects (nothing is going to happen for them). Done steps of
+// cancelled projects stay, as history.
 func (l EntStepLister) ListDueSteps(ctx context.Context, gid uuid.UUID) ([]StepItem, error) {
 	rows, err := l.Ent.XProjectStep.Query().
 		Where(
 			xprojectstep.DueDateNotNil(),
 			xprojectstep.StatusNEQ(xprojectstep.StatusSkipped),
-			xprojectstep.HasProjectWith(xproject.GroupID(gid), xproject.StatusNEQ(xproject.StatusCancelled)),
+			xprojectstep.HasProjectWith(xproject.GroupID(gid)),
+			xprojectstep.Or(
+				xprojectstep.StatusEQ(xprojectstep.StatusDone),
+				xprojectstep.HasProjectWith(xproject.StatusNEQ(xproject.StatusCancelled)),
+			),
 		).
 		WithProject().
 		All(ctx)
@@ -53,6 +61,7 @@ func (l EntStepLister) ListDueSteps(ctx context.Context, gid uuid.UUID) ([]StepI
 		it := StepItem{
 			ID: r.ID, ProjectID: r.ProjectID, Title: r.Title, Notes: r.Notes,
 			Done: r.Status == xprojectstep.StatusDone, DueDate: *r.DueDate,
+			MaintenanceLogged: r.MaintenanceEntryID != nil,
 		}
 		if r.Edges.Project != nil {
 			it.ProjectName = r.Edges.Project.Name
@@ -73,7 +82,8 @@ func (l EntStepLister) ListDueSteps(ctx context.Context, gid uuid.UUID) ([]StepI
 
 // StepProvider turns project steps with a due date into desired calendar events (PLAN §7).
 // It yields nothing while the connection's include_project_steps option is off, which makes
-// the reconciler remove the events it created earlier.
+// the reconciler remove the events it created earlier. Done steps need include_completed and
+// are skipped when their maintenance entry already shows the ✅.
 type StepProvider struct {
 	Source  StepLister
 	BaseURL string // HBOX_X_PUBLIC_BASE_URL, for deep links
@@ -93,6 +103,11 @@ func (p StepProvider) Desired(ctx context.Context, gid uuid.UUID, conn Connectio
 	}
 	out := make([]Desired, 0, len(items))
 	for _, it := range items {
+		if it.Done && (!conn.IncludeCompleted || it.MaintenanceLogged) {
+			// Completed events follow include_completed like maintenance ✅ events, and a
+			// step that logged maintenance is already on the calendar through that entry.
+			continue
+		}
 		out = append(out, StepDesired(it, conn, p.BaseURL))
 	}
 	return out, nil
