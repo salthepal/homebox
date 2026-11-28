@@ -82,9 +82,11 @@ Pages `/x/projects` and `/x/projects/[id]` per PLAN §6. Use existing shadcn com
 
 **Status (2026-11-28):** done (stacked on P2). Pages `/x/projects` (status board: grid of sections, terminal statuses hidden while empty) and `/x/projects/[id]` (status select, edit/delete, linked-item picker, step list with up/down reorder, per-step status, complete dialog, "all steps done, mark project done?" prompt). Verified in Playwright against a real backend on Postgres: created a project, linked two items, added three steps, reordered, completed steps (with "log as maintenance" on), and the progress, estimated and spent totals updated. The NAS item then had two new maintenance entries (cost 75.25 and 0, "From project: ..."). Screenshots are in `.fork/screenshots/p3/`. UI pieces P4 can reuse: `components/ProjectCard.vue`, `ProjectFormDialog.vue`, `StepCompleteDialog.vue`, `ItemPicker.vue`, `composables/useItemNames.ts`, `lib/projects.ts` helpers, and the project methods on `CustomApi` (`projectsForEntity` is already there).
 
-### [ ] P4 · Item tab + maintenance logging UX
+### [x] P4 · Item tab + maintenance logging UX
 `customItemTabs` returns the "Projects" tab. `pages/item/[id]/index/projects.vue` lists linked projects with "New project for this item" (pre-linked). The complete-step dialog has a "log as maintenance" toggle (default on when the step has an item).
 **Done when:** completing a step from the UI shows a new entry on the item's Maintenance tab.
+
+**Status (2026-11-28):** done (stacked on P3). `customItemTabs` returns one "Projects" tab (`x.projects.item_tab.title`) after Maintenance; the seam spread already existed, so no new seam. The tab page lists linked projects with `ProjectCard` and has "New project for this item", which creates the project and then links the item with `setProjectEntities` (if linking fails the user gets a toast and still lands on the project page). The complete dialog already defaulted the toggle on when the step has an item (P3's `StepCompleteDialog`), so no change was needed there. Verified in Playwright against a real backend on Postgres: the tab shows the linked project, a new project from the tab opens already linked to the item, the toggle is checked by default, and completing the step created "Install 10GbE NIC" (cost 80, "From project: …") on the item's Maintenance tab. Note that upstream's Maintenance tab defaults to the "Scheduled" filter, so a completed entry appears under "Completed" or "Both". Screenshots are in `.fork/screenshots/p4/`.
 
 ---
 

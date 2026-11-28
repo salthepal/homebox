@@ -121,6 +121,12 @@
           "log_needs_item": "Link this step to an item to log it as maintenance.",
           "confirm": "Mark complete"
         }
+      },
+      "item_tab": {
+        "title": "Projects",
+        "new": "New project for this item",
+        "empty": "No projects linked to this item yet.",
+        "link_failed": "Project created, but linking it to this item failed. Link it from the project page."
       }
     }
   }
