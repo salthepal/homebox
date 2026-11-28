@@ -83,9 +83,11 @@ Tables from PLAN §6 as `00002_x_projects.sql` (postgres + sqlite3), ent schemas
 - Auto-start uses `Repo.StartProject` (updates only status + started_at, only from idea/planning), inside the same transaction as the step insert/update, and only when a step moves INTO doing.
 - Project names and step titles are limited to 255 bytes (ent's `MaxLen` counts bytes; stricter than VARCHAR(255) characters) so users get 400 instead of 500. Costs and budget must be finite, >= 0, < 1e12, at most 2 decimals (rejected, not rounded), and are stored normalised. Both checks live in the repo (`validate.go`) so every caller is covered.
 
-### [ ] P3 · Projects UI
+### [x] P3 · Projects UI
 Pages `/x/projects` and `/x/projects/[id]` per PLAN §6. Use existing shadcn components from `frontend/components/ui` (import them explicitly). Strings in the layer locale. Responsive.
 **Done when:** FE passes. Manual check: create a project, add, reorder and complete steps, link two items, and confirm progress and cost totals update. Screenshots in the PR.
+
+**Status (2026-11-28):** done (stacked on P2). Pages `/x/projects` (status board: grid of sections, terminal statuses hidden while empty) and `/x/projects/[id]` (status select, edit/delete, linked-item picker, step list with up/down reorder, per-step status, complete dialog, "all steps done, mark project done?" prompt). Verified in Playwright against a real backend on Postgres: created a project, linked two items, added three steps, reordered, completed steps (with "log as maintenance" on), and the progress, estimated and spent totals updated. The NAS item then had two new maintenance entries (cost 75.25 and 0, "From project: ..."). Screenshots are in `.fork/screenshots/p3/`. UI pieces P4 can reuse: `components/ProjectCard.vue`, `ProjectFormDialog.vue`, `StepCompleteDialog.vue`, `ItemPicker.vue`, `composables/useItemNames.ts`, `lib/projects.ts` helpers, and the project methods on `CustomApi` (`projectsForEntity` is already there).
 
 ### [ ] P4 · Item tab + maintenance logging UX
 `customItemTabs` returns the "Projects" tab. `pages/item/[id]/index/projects.vue` lists linked projects with "New project for this item" (pre-linked). The complete-step dialog has a "log as maintenance" toggle (default on when the step has an item).
@@ -143,3 +145,5 @@ Per-group revocable token (stored hashed), `GET /api/v1/x/calendar/{token}.ics`,
 - **Frontend API:** add methods to `CustomApi` in `layers/custom/lib/api/client.ts` and use `useCustomApi()`. It shares upstream's auth, X-Tenant and 401 handling.
 - **Browser check:** `pnpm dev --port 3000` in `frontend/` proxies `/api` to `localhost:7745`. Run the backend binary on 7745. The first page load takes ~1–3 min while Vite pre-bundles.
 - **Local Postgres in a cloud session:** `/usr/lib/postgresql/16/bin/initdb` + `pg_ctl` as the `postgres` user, data dir under `/var/tmp`. `TEST_X_PG_DSN=postgres://postgres@localhost:5432/postgres?sslmode=disable`.
+- **Custom dialogs:** upstream's `Dialog` is bound to a fixed `DialogID` enum in `dialog-provider`, so layer dialogs use reka-ui's `DialogRoot` with `v-model:open` and the `ui/dialog` content parts instead.
+- **Custom JSON is snake_case:** `CustomApi` types mirror the Go handlers (`target_date`, `entity_ids`, ...), not upstream's camelCase.
