@@ -3,8 +3,13 @@
 package ent
 
 import (
+	"time"
+
+	"github.com/google/uuid"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/schema"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xmeta"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xproject"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xprojectstep"
 )
 
 // The init function reads all schema descriptors with runtime code
@@ -21,4 +26,108 @@ func init() {
 	xmetaDescID := xmetaFields[0].Descriptor()
 	// xmeta.IDValidator is a validator for the "id" field. It is called by the builders before save.
 	xmeta.IDValidator = xmetaDescID.Validators[0].(func(string) error)
+	xprojectFields := schema.XProject{}.Fields()
+	_ = xprojectFields
+	// xprojectDescName is the schema descriptor for name field.
+	xprojectDescName := xprojectFields[2].Descriptor()
+	// xproject.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	xproject.NameValidator = func() func(string) error {
+		validators := xprojectDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// xprojectDescDescription is the schema descriptor for description field.
+	xprojectDescDescription := xprojectFields[3].Descriptor()
+	// xproject.DefaultDescription holds the default value on creation for the description field.
+	xproject.DefaultDescription = xprojectDescDescription.Default.(string)
+	// xprojectDescPriority is the schema descriptor for priority field.
+	xprojectDescPriority := xprojectFields[5].Descriptor()
+	// xproject.DefaultPriority holds the default value on creation for the priority field.
+	xproject.DefaultPriority = xprojectDescPriority.Default.(int)
+	// xproject.PriorityValidator is a validator for the "priority" field. It is called by the builders before save.
+	xproject.PriorityValidator = func() func(int) error {
+		validators := xprojectDescPriority.Validators
+		fns := [...]func(int) error{
+			validators[0].(func(int) error),
+			validators[1].(func(int) error),
+		}
+		return func(priority int) error {
+			for _, fn := range fns {
+				if err := fn(priority); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// xprojectDescCreatedAt is the schema descriptor for created_at field.
+	xprojectDescCreatedAt := xprojectFields[10].Descriptor()
+	// xproject.DefaultCreatedAt holds the default value on creation for the created_at field.
+	xproject.DefaultCreatedAt = xprojectDescCreatedAt.Default.(func() time.Time)
+	// xprojectDescUpdatedAt is the schema descriptor for updated_at field.
+	xprojectDescUpdatedAt := xprojectFields[11].Descriptor()
+	// xproject.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	xproject.DefaultUpdatedAt = xprojectDescUpdatedAt.Default.(func() time.Time)
+	// xproject.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	xproject.UpdateDefaultUpdatedAt = xprojectDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// xprojectDescID is the schema descriptor for id field.
+	xprojectDescID := xprojectFields[0].Descriptor()
+	// xproject.DefaultID holds the default value on creation for the id field.
+	xproject.DefaultID = xprojectDescID.Default.(func() uuid.UUID)
+	xprojectstepFields := schema.XProjectStep{}.Fields()
+	_ = xprojectstepFields
+	// xprojectstepDescPosition is the schema descriptor for position field.
+	xprojectstepDescPosition := xprojectstepFields[2].Descriptor()
+	// xprojectstep.DefaultPosition holds the default value on creation for the position field.
+	xprojectstep.DefaultPosition = xprojectstepDescPosition.Default.(int)
+	// xprojectstepDescTitle is the schema descriptor for title field.
+	xprojectstepDescTitle := xprojectstepFields[3].Descriptor()
+	// xprojectstep.TitleValidator is a validator for the "title" field. It is called by the builders before save.
+	xprojectstep.TitleValidator = func() func(string) error {
+		validators := xprojectstepDescTitle.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(title string) error {
+			for _, fn := range fns {
+				if err := fn(title); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// xprojectstepDescNotes is the schema descriptor for notes field.
+	xprojectstepDescNotes := xprojectstepFields[4].Descriptor()
+	// xprojectstep.DefaultNotes holds the default value on creation for the notes field.
+	xprojectstep.DefaultNotes = xprojectstepDescNotes.Default.(string)
+	// xprojectstepDescLogAsMaintenance is the schema descriptor for log_as_maintenance field.
+	xprojectstepDescLogAsMaintenance := xprojectstepFields[11].Descriptor()
+	// xprojectstep.DefaultLogAsMaintenance holds the default value on creation for the log_as_maintenance field.
+	xprojectstep.DefaultLogAsMaintenance = xprojectstepDescLogAsMaintenance.Default.(bool)
+	// xprojectstepDescCreatedAt is the schema descriptor for created_at field.
+	xprojectstepDescCreatedAt := xprojectstepFields[14].Descriptor()
+	// xprojectstep.DefaultCreatedAt holds the default value on creation for the created_at field.
+	xprojectstep.DefaultCreatedAt = xprojectstepDescCreatedAt.Default.(func() time.Time)
+	// xprojectstepDescUpdatedAt is the schema descriptor for updated_at field.
+	xprojectstepDescUpdatedAt := xprojectstepFields[15].Descriptor()
+	// xprojectstep.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	xprojectstep.DefaultUpdatedAt = xprojectstepDescUpdatedAt.Default.(func() time.Time)
+	// xprojectstep.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	xprojectstep.UpdateDefaultUpdatedAt = xprojectstepDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// xprojectstepDescID is the schema descriptor for id field.
+	xprojectstepDescID := xprojectstepFields[0].Descriptor()
+	// xprojectstep.DefaultID holds the default value on creation for the id field.
+	xprojectstep.DefaultID = xprojectstepDescID.Default.(func() uuid.UUID)
 }

@@ -7,11 +7,15 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
+	"github.com/google/uuid"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/predicate"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xmeta"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xproject"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xprojectstep"
 )
 
 const (
@@ -23,7 +27,9 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
-	TypeXMeta = "XMeta"
+	TypeXMeta        = "XMeta"
+	TypeXProject     = "XProject"
+	TypeXProjectStep = "XProjectStep"
 )
 
 // XMetaMutation represents an operation that mutates the XMeta nodes in the graph.
@@ -356,4 +362,2500 @@ func (m *XMetaMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *XMetaMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown XMeta edge %s", name)
+}
+
+// XProjectMutation represents an operation that mutates the XProject nodes in the graph.
+type XProjectMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *uuid.UUID
+	group_id      *uuid.UUID
+	name          *string
+	description   *string
+	status        *xproject.Status
+	priority      *int
+	addpriority   *int
+	target_date   *time.Time
+	budget        *float64
+	addbudget     *float64
+	started_at    *time.Time
+	completed_at  *time.Time
+	created_at    *time.Time
+	updated_at    *time.Time
+	clearedFields map[string]struct{}
+	steps         map[uuid.UUID]struct{}
+	removedsteps  map[uuid.UUID]struct{}
+	clearedsteps  bool
+	done          bool
+	oldValue      func(context.Context) (*XProject, error)
+	predicates    []predicate.XProject
+}
+
+var _ ent.Mutation = (*XProjectMutation)(nil)
+
+// xprojectOption allows management of the mutation configuration using functional options.
+type xprojectOption func(*XProjectMutation)
+
+// newXProjectMutation creates new mutation for the XProject entity.
+func newXProjectMutation(c config, op Op, opts ...xprojectOption) *XProjectMutation {
+	m := &XProjectMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeXProject,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withXProjectID sets the ID field of the mutation.
+func withXProjectID(id uuid.UUID) xprojectOption {
+	return func(m *XProjectMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *XProject
+		)
+		m.oldValue = func(ctx context.Context) (*XProject, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().XProject.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withXProject sets the old XProject of the mutation.
+func withXProject(node *XProject) xprojectOption {
+	return func(m *XProjectMutation) {
+		m.oldValue = func(context.Context) (*XProject, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m XProjectMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m XProjectMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of XProject entities.
+func (m *XProjectMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *XProjectMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *XProjectMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().XProject.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetGroupID sets the "group_id" field.
+func (m *XProjectMutation) SetGroupID(u uuid.UUID) {
+	m.group_id = &u
+}
+
+// GroupID returns the value of the "group_id" field in the mutation.
+func (m *XProjectMutation) GroupID() (r uuid.UUID, exists bool) {
+	v := m.group_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGroupID returns the old "group_id" field's value of the XProject entity.
+// If the XProject object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XProjectMutation) OldGroupID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGroupID: %w", err)
+	}
+	return oldValue.GroupID, nil
+}
+
+// ResetGroupID resets all changes to the "group_id" field.
+func (m *XProjectMutation) ResetGroupID() {
+	m.group_id = nil
+}
+
+// SetName sets the "name" field.
+func (m *XProjectMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *XProjectMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the XProject entity.
+// If the XProject object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XProjectMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *XProjectMutation) ResetName() {
+	m.name = nil
+}
+
+// SetDescription sets the "description" field.
+func (m *XProjectMutation) SetDescription(s string) {
+	m.description = &s
+}
+
+// Description returns the value of the "description" field in the mutation.
+func (m *XProjectMutation) Description() (r string, exists bool) {
+	v := m.description
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDescription returns the old "description" field's value of the XProject entity.
+// If the XProject object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XProjectMutation) OldDescription(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDescription is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDescription requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDescription: %w", err)
+	}
+	return oldValue.Description, nil
+}
+
+// ResetDescription resets all changes to the "description" field.
+func (m *XProjectMutation) ResetDescription() {
+	m.description = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *XProjectMutation) SetStatus(x xproject.Status) {
+	m.status = &x
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *XProjectMutation) Status() (r xproject.Status, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the XProject entity.
+// If the XProject object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XProjectMutation) OldStatus(ctx context.Context) (v xproject.Status, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *XProjectMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetPriority sets the "priority" field.
+func (m *XProjectMutation) SetPriority(i int) {
+	m.priority = &i
+	m.addpriority = nil
+}
+
+// Priority returns the value of the "priority" field in the mutation.
+func (m *XProjectMutation) Priority() (r int, exists bool) {
+	v := m.priority
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPriority returns the old "priority" field's value of the XProject entity.
+// If the XProject object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XProjectMutation) OldPriority(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPriority is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPriority requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPriority: %w", err)
+	}
+	return oldValue.Priority, nil
+}
+
+// AddPriority adds i to the "priority" field.
+func (m *XProjectMutation) AddPriority(i int) {
+	if m.addpriority != nil {
+		*m.addpriority += i
+	} else {
+		m.addpriority = &i
+	}
+}
+
+// AddedPriority returns the value that was added to the "priority" field in this mutation.
+func (m *XProjectMutation) AddedPriority() (r int, exists bool) {
+	v := m.addpriority
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPriority resets all changes to the "priority" field.
+func (m *XProjectMutation) ResetPriority() {
+	m.priority = nil
+	m.addpriority = nil
+}
+
+// SetTargetDate sets the "target_date" field.
+func (m *XProjectMutation) SetTargetDate(t time.Time) {
+	m.target_date = &t
+}
+
+// TargetDate returns the value of the "target_date" field in the mutation.
+func (m *XProjectMutation) TargetDate() (r time.Time, exists bool) {
+	v := m.target_date
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTargetDate returns the old "target_date" field's value of the XProject entity.
+// If the XProject object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XProjectMutation) OldTargetDate(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTargetDate is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTargetDate requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTargetDate: %w", err)
+	}
+	return oldValue.TargetDate, nil
+}
+
+// ClearTargetDate clears the value of the "target_date" field.
+func (m *XProjectMutation) ClearTargetDate() {
+	m.target_date = nil
+	m.clearedFields[xproject.FieldTargetDate] = struct{}{}
+}
+
+// TargetDateCleared returns if the "target_date" field was cleared in this mutation.
+func (m *XProjectMutation) TargetDateCleared() bool {
+	_, ok := m.clearedFields[xproject.FieldTargetDate]
+	return ok
+}
+
+// ResetTargetDate resets all changes to the "target_date" field.
+func (m *XProjectMutation) ResetTargetDate() {
+	m.target_date = nil
+	delete(m.clearedFields, xproject.FieldTargetDate)
+}
+
+// SetBudget sets the "budget" field.
+func (m *XProjectMutation) SetBudget(f float64) {
+	m.budget = &f
+	m.addbudget = nil
+}
+
+// Budget returns the value of the "budget" field in the mutation.
+func (m *XProjectMutation) Budget() (r float64, exists bool) {
+	v := m.budget
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBudget returns the old "budget" field's value of the XProject entity.
+// If the XProject object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XProjectMutation) OldBudget(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBudget is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBudget requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBudget: %w", err)
+	}
+	return oldValue.Budget, nil
+}
+
+// AddBudget adds f to the "budget" field.
+func (m *XProjectMutation) AddBudget(f float64) {
+	if m.addbudget != nil {
+		*m.addbudget += f
+	} else {
+		m.addbudget = &f
+	}
+}
+
+// AddedBudget returns the value that was added to the "budget" field in this mutation.
+func (m *XProjectMutation) AddedBudget() (r float64, exists bool) {
+	v := m.addbudget
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearBudget clears the value of the "budget" field.
+func (m *XProjectMutation) ClearBudget() {
+	m.budget = nil
+	m.addbudget = nil
+	m.clearedFields[xproject.FieldBudget] = struct{}{}
+}
+
+// BudgetCleared returns if the "budget" field was cleared in this mutation.
+func (m *XProjectMutation) BudgetCleared() bool {
+	_, ok := m.clearedFields[xproject.FieldBudget]
+	return ok
+}
+
+// ResetBudget resets all changes to the "budget" field.
+func (m *XProjectMutation) ResetBudget() {
+	m.budget = nil
+	m.addbudget = nil
+	delete(m.clearedFields, xproject.FieldBudget)
+}
+
+// SetStartedAt sets the "started_at" field.
+func (m *XProjectMutation) SetStartedAt(t time.Time) {
+	m.started_at = &t
+}
+
+// StartedAt returns the value of the "started_at" field in the mutation.
+func (m *XProjectMutation) StartedAt() (r time.Time, exists bool) {
+	v := m.started_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStartedAt returns the old "started_at" field's value of the XProject entity.
+// If the XProject object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XProjectMutation) OldStartedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStartedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStartedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStartedAt: %w", err)
+	}
+	return oldValue.StartedAt, nil
+}
+
+// ClearStartedAt clears the value of the "started_at" field.
+func (m *XProjectMutation) ClearStartedAt() {
+	m.started_at = nil
+	m.clearedFields[xproject.FieldStartedAt] = struct{}{}
+}
+
+// StartedAtCleared returns if the "started_at" field was cleared in this mutation.
+func (m *XProjectMutation) StartedAtCleared() bool {
+	_, ok := m.clearedFields[xproject.FieldStartedAt]
+	return ok
+}
+
+// ResetStartedAt resets all changes to the "started_at" field.
+func (m *XProjectMutation) ResetStartedAt() {
+	m.started_at = nil
+	delete(m.clearedFields, xproject.FieldStartedAt)
+}
+
+// SetCompletedAt sets the "completed_at" field.
+func (m *XProjectMutation) SetCompletedAt(t time.Time) {
+	m.completed_at = &t
+}
+
+// CompletedAt returns the value of the "completed_at" field in the mutation.
+func (m *XProjectMutation) CompletedAt() (r time.Time, exists bool) {
+	v := m.completed_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCompletedAt returns the old "completed_at" field's value of the XProject entity.
+// If the XProject object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XProjectMutation) OldCompletedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCompletedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCompletedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCompletedAt: %w", err)
+	}
+	return oldValue.CompletedAt, nil
+}
+
+// ClearCompletedAt clears the value of the "completed_at" field.
+func (m *XProjectMutation) ClearCompletedAt() {
+	m.completed_at = nil
+	m.clearedFields[xproject.FieldCompletedAt] = struct{}{}
+}
+
+// CompletedAtCleared returns if the "completed_at" field was cleared in this mutation.
+func (m *XProjectMutation) CompletedAtCleared() bool {
+	_, ok := m.clearedFields[xproject.FieldCompletedAt]
+	return ok
+}
+
+// ResetCompletedAt resets all changes to the "completed_at" field.
+func (m *XProjectMutation) ResetCompletedAt() {
+	m.completed_at = nil
+	delete(m.clearedFields, xproject.FieldCompletedAt)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *XProjectMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *XProjectMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the XProject entity.
+// If the XProject object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XProjectMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *XProjectMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *XProjectMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *XProjectMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the XProject entity.
+// If the XProject object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XProjectMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *XProjectMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// AddStepIDs adds the "steps" edge to the XProjectStep entity by ids.
+func (m *XProjectMutation) AddStepIDs(ids ...uuid.UUID) {
+	if m.steps == nil {
+		m.steps = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.steps[ids[i]] = struct{}{}
+	}
+}
+
+// ClearSteps clears the "steps" edge to the XProjectStep entity.
+func (m *XProjectMutation) ClearSteps() {
+	m.clearedsteps = true
+}
+
+// StepsCleared reports if the "steps" edge to the XProjectStep entity was cleared.
+func (m *XProjectMutation) StepsCleared() bool {
+	return m.clearedsteps
+}
+
+// RemoveStepIDs removes the "steps" edge to the XProjectStep entity by IDs.
+func (m *XProjectMutation) RemoveStepIDs(ids ...uuid.UUID) {
+	if m.removedsteps == nil {
+		m.removedsteps = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.steps, ids[i])
+		m.removedsteps[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedSteps returns the removed IDs of the "steps" edge to the XProjectStep entity.
+func (m *XProjectMutation) RemovedStepsIDs() (ids []uuid.UUID) {
+	for id := range m.removedsteps {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// StepsIDs returns the "steps" edge IDs in the mutation.
+func (m *XProjectMutation) StepsIDs() (ids []uuid.UUID) {
+	for id := range m.steps {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetSteps resets all changes to the "steps" edge.
+func (m *XProjectMutation) ResetSteps() {
+	m.steps = nil
+	m.clearedsteps = false
+	m.removedsteps = nil
+}
+
+// Where appends a list predicates to the XProjectMutation builder.
+func (m *XProjectMutation) Where(ps ...predicate.XProject) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the XProjectMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *XProjectMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.XProject, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *XProjectMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *XProjectMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (XProject).
+func (m *XProjectMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *XProjectMutation) Fields() []string {
+	fields := make([]string, 0, 11)
+	if m.group_id != nil {
+		fields = append(fields, xproject.FieldGroupID)
+	}
+	if m.name != nil {
+		fields = append(fields, xproject.FieldName)
+	}
+	if m.description != nil {
+		fields = append(fields, xproject.FieldDescription)
+	}
+	if m.status != nil {
+		fields = append(fields, xproject.FieldStatus)
+	}
+	if m.priority != nil {
+		fields = append(fields, xproject.FieldPriority)
+	}
+	if m.target_date != nil {
+		fields = append(fields, xproject.FieldTargetDate)
+	}
+	if m.budget != nil {
+		fields = append(fields, xproject.FieldBudget)
+	}
+	if m.started_at != nil {
+		fields = append(fields, xproject.FieldStartedAt)
+	}
+	if m.completed_at != nil {
+		fields = append(fields, xproject.FieldCompletedAt)
+	}
+	if m.created_at != nil {
+		fields = append(fields, xproject.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, xproject.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *XProjectMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case xproject.FieldGroupID:
+		return m.GroupID()
+	case xproject.FieldName:
+		return m.Name()
+	case xproject.FieldDescription:
+		return m.Description()
+	case xproject.FieldStatus:
+		return m.Status()
+	case xproject.FieldPriority:
+		return m.Priority()
+	case xproject.FieldTargetDate:
+		return m.TargetDate()
+	case xproject.FieldBudget:
+		return m.Budget()
+	case xproject.FieldStartedAt:
+		return m.StartedAt()
+	case xproject.FieldCompletedAt:
+		return m.CompletedAt()
+	case xproject.FieldCreatedAt:
+		return m.CreatedAt()
+	case xproject.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *XProjectMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case xproject.FieldGroupID:
+		return m.OldGroupID(ctx)
+	case xproject.FieldName:
+		return m.OldName(ctx)
+	case xproject.FieldDescription:
+		return m.OldDescription(ctx)
+	case xproject.FieldStatus:
+		return m.OldStatus(ctx)
+	case xproject.FieldPriority:
+		return m.OldPriority(ctx)
+	case xproject.FieldTargetDate:
+		return m.OldTargetDate(ctx)
+	case xproject.FieldBudget:
+		return m.OldBudget(ctx)
+	case xproject.FieldStartedAt:
+		return m.OldStartedAt(ctx)
+	case xproject.FieldCompletedAt:
+		return m.OldCompletedAt(ctx)
+	case xproject.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case xproject.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown XProject field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *XProjectMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case xproject.FieldGroupID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGroupID(v)
+		return nil
+	case xproject.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case xproject.FieldDescription:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDescription(v)
+		return nil
+	case xproject.FieldStatus:
+		v, ok := value.(xproject.Status)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case xproject.FieldPriority:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPriority(v)
+		return nil
+	case xproject.FieldTargetDate:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTargetDate(v)
+		return nil
+	case xproject.FieldBudget:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBudget(v)
+		return nil
+	case xproject.FieldStartedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStartedAt(v)
+		return nil
+	case xproject.FieldCompletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCompletedAt(v)
+		return nil
+	case xproject.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case xproject.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown XProject field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *XProjectMutation) AddedFields() []string {
+	var fields []string
+	if m.addpriority != nil {
+		fields = append(fields, xproject.FieldPriority)
+	}
+	if m.addbudget != nil {
+		fields = append(fields, xproject.FieldBudget)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *XProjectMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case xproject.FieldPriority:
+		return m.AddedPriority()
+	case xproject.FieldBudget:
+		return m.AddedBudget()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *XProjectMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case xproject.FieldPriority:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPriority(v)
+		return nil
+	case xproject.FieldBudget:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddBudget(v)
+		return nil
+	}
+	return fmt.Errorf("unknown XProject numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *XProjectMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(xproject.FieldTargetDate) {
+		fields = append(fields, xproject.FieldTargetDate)
+	}
+	if m.FieldCleared(xproject.FieldBudget) {
+		fields = append(fields, xproject.FieldBudget)
+	}
+	if m.FieldCleared(xproject.FieldStartedAt) {
+		fields = append(fields, xproject.FieldStartedAt)
+	}
+	if m.FieldCleared(xproject.FieldCompletedAt) {
+		fields = append(fields, xproject.FieldCompletedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *XProjectMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *XProjectMutation) ClearField(name string) error {
+	switch name {
+	case xproject.FieldTargetDate:
+		m.ClearTargetDate()
+		return nil
+	case xproject.FieldBudget:
+		m.ClearBudget()
+		return nil
+	case xproject.FieldStartedAt:
+		m.ClearStartedAt()
+		return nil
+	case xproject.FieldCompletedAt:
+		m.ClearCompletedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown XProject nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *XProjectMutation) ResetField(name string) error {
+	switch name {
+	case xproject.FieldGroupID:
+		m.ResetGroupID()
+		return nil
+	case xproject.FieldName:
+		m.ResetName()
+		return nil
+	case xproject.FieldDescription:
+		m.ResetDescription()
+		return nil
+	case xproject.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case xproject.FieldPriority:
+		m.ResetPriority()
+		return nil
+	case xproject.FieldTargetDate:
+		m.ResetTargetDate()
+		return nil
+	case xproject.FieldBudget:
+		m.ResetBudget()
+		return nil
+	case xproject.FieldStartedAt:
+		m.ResetStartedAt()
+		return nil
+	case xproject.FieldCompletedAt:
+		m.ResetCompletedAt()
+		return nil
+	case xproject.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case xproject.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown XProject field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *XProjectMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.steps != nil {
+		edges = append(edges, xproject.EdgeSteps)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *XProjectMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case xproject.EdgeSteps:
+		ids := make([]ent.Value, 0, len(m.steps))
+		for id := range m.steps {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *XProjectMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.removedsteps != nil {
+		edges = append(edges, xproject.EdgeSteps)
+	}
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *XProjectMutation) RemovedIDs(name string) []ent.Value {
+	switch name {
+	case xproject.EdgeSteps:
+		ids := make([]ent.Value, 0, len(m.removedsteps))
+		for id := range m.removedsteps {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *XProjectMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedsteps {
+		edges = append(edges, xproject.EdgeSteps)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *XProjectMutation) EdgeCleared(name string) bool {
+	switch name {
+	case xproject.EdgeSteps:
+		return m.clearedsteps
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *XProjectMutation) ClearEdge(name string) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown XProject unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *XProjectMutation) ResetEdge(name string) error {
+	switch name {
+	case xproject.EdgeSteps:
+		m.ResetSteps()
+		return nil
+	}
+	return fmt.Errorf("unknown XProject edge %s", name)
+}
+
+// XProjectStepMutation represents an operation that mutates the XProjectStep nodes in the graph.
+type XProjectStepMutation struct {
+	config
+	op                   Op
+	typ                  string
+	id                   *uuid.UUID
+	position             *int
+	addposition          *int
+	title                *string
+	notes                *string
+	status               *xprojectstep.Status
+	due_date             *time.Time
+	est_cost             *float64
+	addest_cost          *float64
+	actual_cost          *float64
+	addactual_cost       *float64
+	url                  *string
+	entity_id            *uuid.UUID
+	log_as_maintenance   *bool
+	maintenance_entry_id *uuid.UUID
+	completed_at         *time.Time
+	created_at           *time.Time
+	updated_at           *time.Time
+	clearedFields        map[string]struct{}
+	project              *uuid.UUID
+	clearedproject       bool
+	done                 bool
+	oldValue             func(context.Context) (*XProjectStep, error)
+	predicates           []predicate.XProjectStep
+}
+
+var _ ent.Mutation = (*XProjectStepMutation)(nil)
+
+// xprojectstepOption allows management of the mutation configuration using functional options.
+type xprojectstepOption func(*XProjectStepMutation)
+
+// newXProjectStepMutation creates new mutation for the XProjectStep entity.
+func newXProjectStepMutation(c config, op Op, opts ...xprojectstepOption) *XProjectStepMutation {
+	m := &XProjectStepMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeXProjectStep,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withXProjectStepID sets the ID field of the mutation.
+func withXProjectStepID(id uuid.UUID) xprojectstepOption {
+	return func(m *XProjectStepMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *XProjectStep
+		)
+		m.oldValue = func(ctx context.Context) (*XProjectStep, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().XProjectStep.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withXProjectStep sets the old XProjectStep of the mutation.
+func withXProjectStep(node *XProjectStep) xprojectstepOption {
+	return func(m *XProjectStepMutation) {
+		m.oldValue = func(context.Context) (*XProjectStep, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m XProjectStepMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m XProjectStepMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of XProjectStep entities.
+func (m *XProjectStepMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *XProjectStepMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *XProjectStepMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().XProjectStep.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetProjectID sets the "project_id" field.
+func (m *XProjectStepMutation) SetProjectID(u uuid.UUID) {
+	m.project = &u
+}
+
+// ProjectID returns the value of the "project_id" field in the mutation.
+func (m *XProjectStepMutation) ProjectID() (r uuid.UUID, exists bool) {
+	v := m.project
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProjectID returns the old "project_id" field's value of the XProjectStep entity.
+// If the XProjectStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XProjectStepMutation) OldProjectID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProjectID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProjectID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProjectID: %w", err)
+	}
+	return oldValue.ProjectID, nil
+}
+
+// ResetProjectID resets all changes to the "project_id" field.
+func (m *XProjectStepMutation) ResetProjectID() {
+	m.project = nil
+}
+
+// SetPosition sets the "position" field.
+func (m *XProjectStepMutation) SetPosition(i int) {
+	m.position = &i
+	m.addposition = nil
+}
+
+// Position returns the value of the "position" field in the mutation.
+func (m *XProjectStepMutation) Position() (r int, exists bool) {
+	v := m.position
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPosition returns the old "position" field's value of the XProjectStep entity.
+// If the XProjectStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XProjectStepMutation) OldPosition(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPosition is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPosition requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPosition: %w", err)
+	}
+	return oldValue.Position, nil
+}
+
+// AddPosition adds i to the "position" field.
+func (m *XProjectStepMutation) AddPosition(i int) {
+	if m.addposition != nil {
+		*m.addposition += i
+	} else {
+		m.addposition = &i
+	}
+}
+
+// AddedPosition returns the value that was added to the "position" field in this mutation.
+func (m *XProjectStepMutation) AddedPosition() (r int, exists bool) {
+	v := m.addposition
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPosition resets all changes to the "position" field.
+func (m *XProjectStepMutation) ResetPosition() {
+	m.position = nil
+	m.addposition = nil
+}
+
+// SetTitle sets the "title" field.
+func (m *XProjectStepMutation) SetTitle(s string) {
+	m.title = &s
+}
+
+// Title returns the value of the "title" field in the mutation.
+func (m *XProjectStepMutation) Title() (r string, exists bool) {
+	v := m.title
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTitle returns the old "title" field's value of the XProjectStep entity.
+// If the XProjectStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XProjectStepMutation) OldTitle(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTitle is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTitle requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTitle: %w", err)
+	}
+	return oldValue.Title, nil
+}
+
+// ResetTitle resets all changes to the "title" field.
+func (m *XProjectStepMutation) ResetTitle() {
+	m.title = nil
+}
+
+// SetNotes sets the "notes" field.
+func (m *XProjectStepMutation) SetNotes(s string) {
+	m.notes = &s
+}
+
+// Notes returns the value of the "notes" field in the mutation.
+func (m *XProjectStepMutation) Notes() (r string, exists bool) {
+	v := m.notes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNotes returns the old "notes" field's value of the XProjectStep entity.
+// If the XProjectStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XProjectStepMutation) OldNotes(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNotes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNotes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNotes: %w", err)
+	}
+	return oldValue.Notes, nil
+}
+
+// ResetNotes resets all changes to the "notes" field.
+func (m *XProjectStepMutation) ResetNotes() {
+	m.notes = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *XProjectStepMutation) SetStatus(x xprojectstep.Status) {
+	m.status = &x
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *XProjectStepMutation) Status() (r xprojectstep.Status, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the XProjectStep entity.
+// If the XProjectStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XProjectStepMutation) OldStatus(ctx context.Context) (v xprojectstep.Status, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *XProjectStepMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetDueDate sets the "due_date" field.
+func (m *XProjectStepMutation) SetDueDate(t time.Time) {
+	m.due_date = &t
+}
+
+// DueDate returns the value of the "due_date" field in the mutation.
+func (m *XProjectStepMutation) DueDate() (r time.Time, exists bool) {
+	v := m.due_date
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDueDate returns the old "due_date" field's value of the XProjectStep entity.
+// If the XProjectStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XProjectStepMutation) OldDueDate(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDueDate is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDueDate requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDueDate: %w", err)
+	}
+	return oldValue.DueDate, nil
+}
+
+// ClearDueDate clears the value of the "due_date" field.
+func (m *XProjectStepMutation) ClearDueDate() {
+	m.due_date = nil
+	m.clearedFields[xprojectstep.FieldDueDate] = struct{}{}
+}
+
+// DueDateCleared returns if the "due_date" field was cleared in this mutation.
+func (m *XProjectStepMutation) DueDateCleared() bool {
+	_, ok := m.clearedFields[xprojectstep.FieldDueDate]
+	return ok
+}
+
+// ResetDueDate resets all changes to the "due_date" field.
+func (m *XProjectStepMutation) ResetDueDate() {
+	m.due_date = nil
+	delete(m.clearedFields, xprojectstep.FieldDueDate)
+}
+
+// SetEstCost sets the "est_cost" field.
+func (m *XProjectStepMutation) SetEstCost(f float64) {
+	m.est_cost = &f
+	m.addest_cost = nil
+}
+
+// EstCost returns the value of the "est_cost" field in the mutation.
+func (m *XProjectStepMutation) EstCost() (r float64, exists bool) {
+	v := m.est_cost
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEstCost returns the old "est_cost" field's value of the XProjectStep entity.
+// If the XProjectStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XProjectStepMutation) OldEstCost(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEstCost is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEstCost requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEstCost: %w", err)
+	}
+	return oldValue.EstCost, nil
+}
+
+// AddEstCost adds f to the "est_cost" field.
+func (m *XProjectStepMutation) AddEstCost(f float64) {
+	if m.addest_cost != nil {
+		*m.addest_cost += f
+	} else {
+		m.addest_cost = &f
+	}
+}
+
+// AddedEstCost returns the value that was added to the "est_cost" field in this mutation.
+func (m *XProjectStepMutation) AddedEstCost() (r float64, exists bool) {
+	v := m.addest_cost
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearEstCost clears the value of the "est_cost" field.
+func (m *XProjectStepMutation) ClearEstCost() {
+	m.est_cost = nil
+	m.addest_cost = nil
+	m.clearedFields[xprojectstep.FieldEstCost] = struct{}{}
+}
+
+// EstCostCleared returns if the "est_cost" field was cleared in this mutation.
+func (m *XProjectStepMutation) EstCostCleared() bool {
+	_, ok := m.clearedFields[xprojectstep.FieldEstCost]
+	return ok
+}
+
+// ResetEstCost resets all changes to the "est_cost" field.
+func (m *XProjectStepMutation) ResetEstCost() {
+	m.est_cost = nil
+	m.addest_cost = nil
+	delete(m.clearedFields, xprojectstep.FieldEstCost)
+}
+
+// SetActualCost sets the "actual_cost" field.
+func (m *XProjectStepMutation) SetActualCost(f float64) {
+	m.actual_cost = &f
+	m.addactual_cost = nil
+}
+
+// ActualCost returns the value of the "actual_cost" field in the mutation.
+func (m *XProjectStepMutation) ActualCost() (r float64, exists bool) {
+	v := m.actual_cost
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldActualCost returns the old "actual_cost" field's value of the XProjectStep entity.
+// If the XProjectStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XProjectStepMutation) OldActualCost(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldActualCost is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldActualCost requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldActualCost: %w", err)
+	}
+	return oldValue.ActualCost, nil
+}
+
+// AddActualCost adds f to the "actual_cost" field.
+func (m *XProjectStepMutation) AddActualCost(f float64) {
+	if m.addactual_cost != nil {
+		*m.addactual_cost += f
+	} else {
+		m.addactual_cost = &f
+	}
+}
+
+// AddedActualCost returns the value that was added to the "actual_cost" field in this mutation.
+func (m *XProjectStepMutation) AddedActualCost() (r float64, exists bool) {
+	v := m.addactual_cost
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearActualCost clears the value of the "actual_cost" field.
+func (m *XProjectStepMutation) ClearActualCost() {
+	m.actual_cost = nil
+	m.addactual_cost = nil
+	m.clearedFields[xprojectstep.FieldActualCost] = struct{}{}
+}
+
+// ActualCostCleared returns if the "actual_cost" field was cleared in this mutation.
+func (m *XProjectStepMutation) ActualCostCleared() bool {
+	_, ok := m.clearedFields[xprojectstep.FieldActualCost]
+	return ok
+}
+
+// ResetActualCost resets all changes to the "actual_cost" field.
+func (m *XProjectStepMutation) ResetActualCost() {
+	m.actual_cost = nil
+	m.addactual_cost = nil
+	delete(m.clearedFields, xprojectstep.FieldActualCost)
+}
+
+// SetURL sets the "url" field.
+func (m *XProjectStepMutation) SetURL(s string) {
+	m.url = &s
+}
+
+// URL returns the value of the "url" field in the mutation.
+func (m *XProjectStepMutation) URL() (r string, exists bool) {
+	v := m.url
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldURL returns the old "url" field's value of the XProjectStep entity.
+// If the XProjectStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XProjectStepMutation) OldURL(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldURL is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldURL requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldURL: %w", err)
+	}
+	return oldValue.URL, nil
+}
+
+// ClearURL clears the value of the "url" field.
+func (m *XProjectStepMutation) ClearURL() {
+	m.url = nil
+	m.clearedFields[xprojectstep.FieldURL] = struct{}{}
+}
+
+// URLCleared returns if the "url" field was cleared in this mutation.
+func (m *XProjectStepMutation) URLCleared() bool {
+	_, ok := m.clearedFields[xprojectstep.FieldURL]
+	return ok
+}
+
+// ResetURL resets all changes to the "url" field.
+func (m *XProjectStepMutation) ResetURL() {
+	m.url = nil
+	delete(m.clearedFields, xprojectstep.FieldURL)
+}
+
+// SetEntityID sets the "entity_id" field.
+func (m *XProjectStepMutation) SetEntityID(u uuid.UUID) {
+	m.entity_id = &u
+}
+
+// EntityID returns the value of the "entity_id" field in the mutation.
+func (m *XProjectStepMutation) EntityID() (r uuid.UUID, exists bool) {
+	v := m.entity_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEntityID returns the old "entity_id" field's value of the XProjectStep entity.
+// If the XProjectStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XProjectStepMutation) OldEntityID(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEntityID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEntityID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEntityID: %w", err)
+	}
+	return oldValue.EntityID, nil
+}
+
+// ClearEntityID clears the value of the "entity_id" field.
+func (m *XProjectStepMutation) ClearEntityID() {
+	m.entity_id = nil
+	m.clearedFields[xprojectstep.FieldEntityID] = struct{}{}
+}
+
+// EntityIDCleared returns if the "entity_id" field was cleared in this mutation.
+func (m *XProjectStepMutation) EntityIDCleared() bool {
+	_, ok := m.clearedFields[xprojectstep.FieldEntityID]
+	return ok
+}
+
+// ResetEntityID resets all changes to the "entity_id" field.
+func (m *XProjectStepMutation) ResetEntityID() {
+	m.entity_id = nil
+	delete(m.clearedFields, xprojectstep.FieldEntityID)
+}
+
+// SetLogAsMaintenance sets the "log_as_maintenance" field.
+func (m *XProjectStepMutation) SetLogAsMaintenance(b bool) {
+	m.log_as_maintenance = &b
+}
+
+// LogAsMaintenance returns the value of the "log_as_maintenance" field in the mutation.
+func (m *XProjectStepMutation) LogAsMaintenance() (r bool, exists bool) {
+	v := m.log_as_maintenance
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLogAsMaintenance returns the old "log_as_maintenance" field's value of the XProjectStep entity.
+// If the XProjectStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XProjectStepMutation) OldLogAsMaintenance(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLogAsMaintenance is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLogAsMaintenance requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLogAsMaintenance: %w", err)
+	}
+	return oldValue.LogAsMaintenance, nil
+}
+
+// ResetLogAsMaintenance resets all changes to the "log_as_maintenance" field.
+func (m *XProjectStepMutation) ResetLogAsMaintenance() {
+	m.log_as_maintenance = nil
+}
+
+// SetMaintenanceEntryID sets the "maintenance_entry_id" field.
+func (m *XProjectStepMutation) SetMaintenanceEntryID(u uuid.UUID) {
+	m.maintenance_entry_id = &u
+}
+
+// MaintenanceEntryID returns the value of the "maintenance_entry_id" field in the mutation.
+func (m *XProjectStepMutation) MaintenanceEntryID() (r uuid.UUID, exists bool) {
+	v := m.maintenance_entry_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMaintenanceEntryID returns the old "maintenance_entry_id" field's value of the XProjectStep entity.
+// If the XProjectStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XProjectStepMutation) OldMaintenanceEntryID(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMaintenanceEntryID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMaintenanceEntryID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMaintenanceEntryID: %w", err)
+	}
+	return oldValue.MaintenanceEntryID, nil
+}
+
+// ClearMaintenanceEntryID clears the value of the "maintenance_entry_id" field.
+func (m *XProjectStepMutation) ClearMaintenanceEntryID() {
+	m.maintenance_entry_id = nil
+	m.clearedFields[xprojectstep.FieldMaintenanceEntryID] = struct{}{}
+}
+
+// MaintenanceEntryIDCleared returns if the "maintenance_entry_id" field was cleared in this mutation.
+func (m *XProjectStepMutation) MaintenanceEntryIDCleared() bool {
+	_, ok := m.clearedFields[xprojectstep.FieldMaintenanceEntryID]
+	return ok
+}
+
+// ResetMaintenanceEntryID resets all changes to the "maintenance_entry_id" field.
+func (m *XProjectStepMutation) ResetMaintenanceEntryID() {
+	m.maintenance_entry_id = nil
+	delete(m.clearedFields, xprojectstep.FieldMaintenanceEntryID)
+}
+
+// SetCompletedAt sets the "completed_at" field.
+func (m *XProjectStepMutation) SetCompletedAt(t time.Time) {
+	m.completed_at = &t
+}
+
+// CompletedAt returns the value of the "completed_at" field in the mutation.
+func (m *XProjectStepMutation) CompletedAt() (r time.Time, exists bool) {
+	v := m.completed_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCompletedAt returns the old "completed_at" field's value of the XProjectStep entity.
+// If the XProjectStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XProjectStepMutation) OldCompletedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCompletedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCompletedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCompletedAt: %w", err)
+	}
+	return oldValue.CompletedAt, nil
+}
+
+// ClearCompletedAt clears the value of the "completed_at" field.
+func (m *XProjectStepMutation) ClearCompletedAt() {
+	m.completed_at = nil
+	m.clearedFields[xprojectstep.FieldCompletedAt] = struct{}{}
+}
+
+// CompletedAtCleared returns if the "completed_at" field was cleared in this mutation.
+func (m *XProjectStepMutation) CompletedAtCleared() bool {
+	_, ok := m.clearedFields[xprojectstep.FieldCompletedAt]
+	return ok
+}
+
+// ResetCompletedAt resets all changes to the "completed_at" field.
+func (m *XProjectStepMutation) ResetCompletedAt() {
+	m.completed_at = nil
+	delete(m.clearedFields, xprojectstep.FieldCompletedAt)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *XProjectStepMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *XProjectStepMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the XProjectStep entity.
+// If the XProjectStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XProjectStepMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *XProjectStepMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *XProjectStepMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *XProjectStepMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the XProjectStep entity.
+// If the XProjectStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XProjectStepMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *XProjectStepMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// ClearProject clears the "project" edge to the XProject entity.
+func (m *XProjectStepMutation) ClearProject() {
+	m.clearedproject = true
+	m.clearedFields[xprojectstep.FieldProjectID] = struct{}{}
+}
+
+// ProjectCleared reports if the "project" edge to the XProject entity was cleared.
+func (m *XProjectStepMutation) ProjectCleared() bool {
+	return m.clearedproject
+}
+
+// ProjectIDs returns the "project" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ProjectID instead. It exists only for internal usage by the builders.
+func (m *XProjectStepMutation) ProjectIDs() (ids []uuid.UUID) {
+	if id := m.project; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetProject resets all changes to the "project" edge.
+func (m *XProjectStepMutation) ResetProject() {
+	m.project = nil
+	m.clearedproject = false
+}
+
+// Where appends a list predicates to the XProjectStepMutation builder.
+func (m *XProjectStepMutation) Where(ps ...predicate.XProjectStep) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the XProjectStepMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *XProjectStepMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.XProjectStep, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *XProjectStepMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *XProjectStepMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (XProjectStep).
+func (m *XProjectStepMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *XProjectStepMutation) Fields() []string {
+	fields := make([]string, 0, 15)
+	if m.project != nil {
+		fields = append(fields, xprojectstep.FieldProjectID)
+	}
+	if m.position != nil {
+		fields = append(fields, xprojectstep.FieldPosition)
+	}
+	if m.title != nil {
+		fields = append(fields, xprojectstep.FieldTitle)
+	}
+	if m.notes != nil {
+		fields = append(fields, xprojectstep.FieldNotes)
+	}
+	if m.status != nil {
+		fields = append(fields, xprojectstep.FieldStatus)
+	}
+	if m.due_date != nil {
+		fields = append(fields, xprojectstep.FieldDueDate)
+	}
+	if m.est_cost != nil {
+		fields = append(fields, xprojectstep.FieldEstCost)
+	}
+	if m.actual_cost != nil {
+		fields = append(fields, xprojectstep.FieldActualCost)
+	}
+	if m.url != nil {
+		fields = append(fields, xprojectstep.FieldURL)
+	}
+	if m.entity_id != nil {
+		fields = append(fields, xprojectstep.FieldEntityID)
+	}
+	if m.log_as_maintenance != nil {
+		fields = append(fields, xprojectstep.FieldLogAsMaintenance)
+	}
+	if m.maintenance_entry_id != nil {
+		fields = append(fields, xprojectstep.FieldMaintenanceEntryID)
+	}
+	if m.completed_at != nil {
+		fields = append(fields, xprojectstep.FieldCompletedAt)
+	}
+	if m.created_at != nil {
+		fields = append(fields, xprojectstep.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, xprojectstep.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *XProjectStepMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case xprojectstep.FieldProjectID:
+		return m.ProjectID()
+	case xprojectstep.FieldPosition:
+		return m.Position()
+	case xprojectstep.FieldTitle:
+		return m.Title()
+	case xprojectstep.FieldNotes:
+		return m.Notes()
+	case xprojectstep.FieldStatus:
+		return m.Status()
+	case xprojectstep.FieldDueDate:
+		return m.DueDate()
+	case xprojectstep.FieldEstCost:
+		return m.EstCost()
+	case xprojectstep.FieldActualCost:
+		return m.ActualCost()
+	case xprojectstep.FieldURL:
+		return m.URL()
+	case xprojectstep.FieldEntityID:
+		return m.EntityID()
+	case xprojectstep.FieldLogAsMaintenance:
+		return m.LogAsMaintenance()
+	case xprojectstep.FieldMaintenanceEntryID:
+		return m.MaintenanceEntryID()
+	case xprojectstep.FieldCompletedAt:
+		return m.CompletedAt()
+	case xprojectstep.FieldCreatedAt:
+		return m.CreatedAt()
+	case xprojectstep.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *XProjectStepMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case xprojectstep.FieldProjectID:
+		return m.OldProjectID(ctx)
+	case xprojectstep.FieldPosition:
+		return m.OldPosition(ctx)
+	case xprojectstep.FieldTitle:
+		return m.OldTitle(ctx)
+	case xprojectstep.FieldNotes:
+		return m.OldNotes(ctx)
+	case xprojectstep.FieldStatus:
+		return m.OldStatus(ctx)
+	case xprojectstep.FieldDueDate:
+		return m.OldDueDate(ctx)
+	case xprojectstep.FieldEstCost:
+		return m.OldEstCost(ctx)
+	case xprojectstep.FieldActualCost:
+		return m.OldActualCost(ctx)
+	case xprojectstep.FieldURL:
+		return m.OldURL(ctx)
+	case xprojectstep.FieldEntityID:
+		return m.OldEntityID(ctx)
+	case xprojectstep.FieldLogAsMaintenance:
+		return m.OldLogAsMaintenance(ctx)
+	case xprojectstep.FieldMaintenanceEntryID:
+		return m.OldMaintenanceEntryID(ctx)
+	case xprojectstep.FieldCompletedAt:
+		return m.OldCompletedAt(ctx)
+	case xprojectstep.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case xprojectstep.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown XProjectStep field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *XProjectStepMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case xprojectstep.FieldProjectID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProjectID(v)
+		return nil
+	case xprojectstep.FieldPosition:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPosition(v)
+		return nil
+	case xprojectstep.FieldTitle:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTitle(v)
+		return nil
+	case xprojectstep.FieldNotes:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNotes(v)
+		return nil
+	case xprojectstep.FieldStatus:
+		v, ok := value.(xprojectstep.Status)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case xprojectstep.FieldDueDate:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDueDate(v)
+		return nil
+	case xprojectstep.FieldEstCost:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEstCost(v)
+		return nil
+	case xprojectstep.FieldActualCost:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetActualCost(v)
+		return nil
+	case xprojectstep.FieldURL:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetURL(v)
+		return nil
+	case xprojectstep.FieldEntityID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEntityID(v)
+		return nil
+	case xprojectstep.FieldLogAsMaintenance:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLogAsMaintenance(v)
+		return nil
+	case xprojectstep.FieldMaintenanceEntryID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMaintenanceEntryID(v)
+		return nil
+	case xprojectstep.FieldCompletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCompletedAt(v)
+		return nil
+	case xprojectstep.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case xprojectstep.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown XProjectStep field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *XProjectStepMutation) AddedFields() []string {
+	var fields []string
+	if m.addposition != nil {
+		fields = append(fields, xprojectstep.FieldPosition)
+	}
+	if m.addest_cost != nil {
+		fields = append(fields, xprojectstep.FieldEstCost)
+	}
+	if m.addactual_cost != nil {
+		fields = append(fields, xprojectstep.FieldActualCost)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *XProjectStepMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case xprojectstep.FieldPosition:
+		return m.AddedPosition()
+	case xprojectstep.FieldEstCost:
+		return m.AddedEstCost()
+	case xprojectstep.FieldActualCost:
+		return m.AddedActualCost()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *XProjectStepMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case xprojectstep.FieldPosition:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPosition(v)
+		return nil
+	case xprojectstep.FieldEstCost:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddEstCost(v)
+		return nil
+	case xprojectstep.FieldActualCost:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddActualCost(v)
+		return nil
+	}
+	return fmt.Errorf("unknown XProjectStep numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *XProjectStepMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(xprojectstep.FieldDueDate) {
+		fields = append(fields, xprojectstep.FieldDueDate)
+	}
+	if m.FieldCleared(xprojectstep.FieldEstCost) {
+		fields = append(fields, xprojectstep.FieldEstCost)
+	}
+	if m.FieldCleared(xprojectstep.FieldActualCost) {
+		fields = append(fields, xprojectstep.FieldActualCost)
+	}
+	if m.FieldCleared(xprojectstep.FieldURL) {
+		fields = append(fields, xprojectstep.FieldURL)
+	}
+	if m.FieldCleared(xprojectstep.FieldEntityID) {
+		fields = append(fields, xprojectstep.FieldEntityID)
+	}
+	if m.FieldCleared(xprojectstep.FieldMaintenanceEntryID) {
+		fields = append(fields, xprojectstep.FieldMaintenanceEntryID)
+	}
+	if m.FieldCleared(xprojectstep.FieldCompletedAt) {
+		fields = append(fields, xprojectstep.FieldCompletedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *XProjectStepMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *XProjectStepMutation) ClearField(name string) error {
+	switch name {
+	case xprojectstep.FieldDueDate:
+		m.ClearDueDate()
+		return nil
+	case xprojectstep.FieldEstCost:
+		m.ClearEstCost()
+		return nil
+	case xprojectstep.FieldActualCost:
+		m.ClearActualCost()
+		return nil
+	case xprojectstep.FieldURL:
+		m.ClearURL()
+		return nil
+	case xprojectstep.FieldEntityID:
+		m.ClearEntityID()
+		return nil
+	case xprojectstep.FieldMaintenanceEntryID:
+		m.ClearMaintenanceEntryID()
+		return nil
+	case xprojectstep.FieldCompletedAt:
+		m.ClearCompletedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown XProjectStep nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *XProjectStepMutation) ResetField(name string) error {
+	switch name {
+	case xprojectstep.FieldProjectID:
+		m.ResetProjectID()
+		return nil
+	case xprojectstep.FieldPosition:
+		m.ResetPosition()
+		return nil
+	case xprojectstep.FieldTitle:
+		m.ResetTitle()
+		return nil
+	case xprojectstep.FieldNotes:
+		m.ResetNotes()
+		return nil
+	case xprojectstep.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case xprojectstep.FieldDueDate:
+		m.ResetDueDate()
+		return nil
+	case xprojectstep.FieldEstCost:
+		m.ResetEstCost()
+		return nil
+	case xprojectstep.FieldActualCost:
+		m.ResetActualCost()
+		return nil
+	case xprojectstep.FieldURL:
+		m.ResetURL()
+		return nil
+	case xprojectstep.FieldEntityID:
+		m.ResetEntityID()
+		return nil
+	case xprojectstep.FieldLogAsMaintenance:
+		m.ResetLogAsMaintenance()
+		return nil
+	case xprojectstep.FieldMaintenanceEntryID:
+		m.ResetMaintenanceEntryID()
+		return nil
+	case xprojectstep.FieldCompletedAt:
+		m.ResetCompletedAt()
+		return nil
+	case xprojectstep.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case xprojectstep.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown XProjectStep field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *XProjectStepMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.project != nil {
+		edges = append(edges, xprojectstep.EdgeProject)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *XProjectStepMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case xprojectstep.EdgeProject:
+		if id := m.project; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *XProjectStepMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *XProjectStepMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *XProjectStepMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedproject {
+		edges = append(edges, xprojectstep.EdgeProject)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *XProjectStepMutation) EdgeCleared(name string) bool {
+	switch name {
+	case xprojectstep.EdgeProject:
+		return m.clearedproject
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *XProjectStepMutation) ClearEdge(name string) error {
+	switch name {
+	case xprojectstep.EdgeProject:
+		m.ClearProject()
+		return nil
+	}
+	return fmt.Errorf("unknown XProjectStep unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *XProjectStepMutation) ResetEdge(name string) error {
+	switch name {
+	case xprojectstep.EdgeProject:
+		m.ResetProject()
+		return nil
+	}
+	return fmt.Errorf("unknown XProjectStep edge %s", name)
 }

@@ -61,9 +61,11 @@ Create:
 
 ## Phase P — Projects
 
-### [ ] P1 · Schema, migrations, repo
+### [x] P1 · Schema, migrations, repo
 Tables from PLAN §6 as `00002_x_projects.sql` (postgres + sqlite3), ent schemas, generated code, and a repo in `internal/custom/projects` (CRUD, steps CRUD, reorder in a transaction, entity-link replace, list by entity). Every method takes a group ID and filters by it.
 **Done when:** repo tests on SQLite and Postgres cover CRUD, cross-group isolation (group B can't read or modify group A), reorder, and cascade of steps on project delete.
+
+**Status (2026-11-28):** done. Repo tests pass on SQLite and Postgres 16 (CRUD, status timestamps, cross-group isolation on every method, reorder validation, cascade at repo and DB level). `x_project_entities` has no ent schema (composite key with no upstream edge), so the repo reads and writes it with plain SQL on the same `*sql.DB` (`$n` vs `?` placeholders by dialect). `Repo.CompleteStep` stores the completion details, and the P2 service creates the maintenance entry first and passes its ID in.
 
 ### [ ] P2 · Service, API, adapters, sweeper
 - `internal/custom/upstream/entities.go` (exists-in-group checks, names for display) and `upstream/maintenance.go` (create entry, exists check), wrapping upstream repos.

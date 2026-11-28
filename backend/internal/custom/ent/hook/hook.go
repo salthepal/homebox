@@ -21,6 +21,30 @@ func (f XMetaFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.XMetaMutation", m)
 }
 
+// The XProjectFunc type is an adapter to allow the use of ordinary
+// function as XProject mutator.
+type XProjectFunc func(context.Context, *ent.XProjectMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f XProjectFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.XProjectMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.XProjectMutation", m)
+}
+
+// The XProjectStepFunc type is an adapter to allow the use of ordinary
+// function as XProjectStep mutator.
+type XProjectStepFunc func(context.Context, *ent.XProjectStepMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f XProjectStepFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.XProjectStepMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.XProjectStepMutation", m)
+}
+
 // Condition is a hook condition function.
 type Condition func(context.Context, ent.Mutation) bool
 

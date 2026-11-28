@@ -9,12 +9,16 @@ import (
 	"log"
 	"reflect"
 
+	"github.com/google/uuid"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/migrate"
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
+	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xmeta"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xproject"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xprojectstep"
 )
 
 // Client is the client that holds all ent builders.
@@ -24,6 +28,10 @@ type Client struct {
 	Schema *migrate.Schema
 	// XMeta is the client for interacting with the XMeta builders.
 	XMeta *XMetaClient
+	// XProject is the client for interacting with the XProject builders.
+	XProject *XProjectClient
+	// XProjectStep is the client for interacting with the XProjectStep builders.
+	XProjectStep *XProjectStepClient
 }
 
 // NewClient creates a new client configured with the given options.
@@ -36,6 +44,8 @@ func NewClient(opts ...Option) *Client {
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.XMeta = NewXMetaClient(c.config)
+	c.XProject = NewXProjectClient(c.config)
+	c.XProjectStep = NewXProjectStepClient(c.config)
 }
 
 type (
@@ -126,9 +136,11 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:    ctx,
-		config: cfg,
-		XMeta:  NewXMetaClient(cfg),
+		ctx:          ctx,
+		config:       cfg,
+		XMeta:        NewXMetaClient(cfg),
+		XProject:     NewXProjectClient(cfg),
+		XProjectStep: NewXProjectStepClient(cfg),
 	}, nil
 }
 
@@ -146,9 +158,11 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:    ctx,
-		config: cfg,
-		XMeta:  NewXMetaClient(cfg),
+		ctx:          ctx,
+		config:       cfg,
+		XMeta:        NewXMetaClient(cfg),
+		XProject:     NewXProjectClient(cfg),
+		XProjectStep: NewXProjectStepClient(cfg),
 	}, nil
 }
 
@@ -178,12 +192,16 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	c.XMeta.Use(hooks...)
+	c.XProject.Use(hooks...)
+	c.XProjectStep.Use(hooks...)
 }
 
 // Intercept adds the query interceptors to all the entity clients.
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	c.XMeta.Intercept(interceptors...)
+	c.XProject.Intercept(interceptors...)
+	c.XProjectStep.Intercept(interceptors...)
 }
 
 // Mutate implements the ent.Mutator interface.
@@ -191,6 +209,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
 	case *XMetaMutation:
 		return c.XMeta.mutate(ctx, m)
+	case *XProjectMutation:
+		return c.XProject.mutate(ctx, m)
+	case *XProjectStepMutation:
+		return c.XProjectStep.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
 	}
@@ -329,12 +351,310 @@ func (c *XMetaClient) mutate(ctx context.Context, m *XMetaMutation) (Value, erro
 	}
 }
 
+// XProjectClient is a client for the XProject schema.
+type XProjectClient struct {
+	config
+}
+
+// NewXProjectClient returns a client for the XProject from the given config.
+func NewXProjectClient(c config) *XProjectClient {
+	return &XProjectClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `xproject.Hooks(f(g(h())))`.
+func (c *XProjectClient) Use(hooks ...Hook) {
+	c.hooks.XProject = append(c.hooks.XProject, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `xproject.Intercept(f(g(h())))`.
+func (c *XProjectClient) Intercept(interceptors ...Interceptor) {
+	c.inters.XProject = append(c.inters.XProject, interceptors...)
+}
+
+// Create returns a builder for creating a XProject entity.
+func (c *XProjectClient) Create() *XProjectCreate {
+	mutation := newXProjectMutation(c.config, OpCreate)
+	return &XProjectCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of XProject entities.
+func (c *XProjectClient) CreateBulk(builders ...*XProjectCreate) *XProjectCreateBulk {
+	return &XProjectCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *XProjectClient) MapCreateBulk(slice any, setFunc func(*XProjectCreate, int)) *XProjectCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &XProjectCreateBulk{err: fmt.Errorf("calling to XProjectClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*XProjectCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &XProjectCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for XProject.
+func (c *XProjectClient) Update() *XProjectUpdate {
+	mutation := newXProjectMutation(c.config, OpUpdate)
+	return &XProjectUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *XProjectClient) UpdateOne(_m *XProject) *XProjectUpdateOne {
+	mutation := newXProjectMutation(c.config, OpUpdateOne, withXProject(_m))
+	return &XProjectUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *XProjectClient) UpdateOneID(id uuid.UUID) *XProjectUpdateOne {
+	mutation := newXProjectMutation(c.config, OpUpdateOne, withXProjectID(id))
+	return &XProjectUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for XProject.
+func (c *XProjectClient) Delete() *XProjectDelete {
+	mutation := newXProjectMutation(c.config, OpDelete)
+	return &XProjectDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *XProjectClient) DeleteOne(_m *XProject) *XProjectDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *XProjectClient) DeleteOneID(id uuid.UUID) *XProjectDeleteOne {
+	builder := c.Delete().Where(xproject.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &XProjectDeleteOne{builder}
+}
+
+// Query returns a query builder for XProject.
+func (c *XProjectClient) Query() *XProjectQuery {
+	return &XProjectQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeXProject},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a XProject entity by its id.
+func (c *XProjectClient) Get(ctx context.Context, id uuid.UUID) (*XProject, error) {
+	return c.Query().Where(xproject.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *XProjectClient) GetX(ctx context.Context, id uuid.UUID) *XProject {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QuerySteps queries the steps edge of a XProject.
+func (c *XProjectClient) QuerySteps(_m *XProject) *XProjectStepQuery {
+	query := (&XProjectStepClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(xproject.Table, xproject.FieldID, id),
+			sqlgraph.To(xprojectstep.Table, xprojectstep.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, xproject.StepsTable, xproject.StepsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *XProjectClient) Hooks() []Hook {
+	return c.hooks.XProject
+}
+
+// Interceptors returns the client interceptors.
+func (c *XProjectClient) Interceptors() []Interceptor {
+	return c.inters.XProject
+}
+
+func (c *XProjectClient) mutate(ctx context.Context, m *XProjectMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&XProjectCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&XProjectUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&XProjectUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&XProjectDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown XProject mutation op: %q", m.Op())
+	}
+}
+
+// XProjectStepClient is a client for the XProjectStep schema.
+type XProjectStepClient struct {
+	config
+}
+
+// NewXProjectStepClient returns a client for the XProjectStep from the given config.
+func NewXProjectStepClient(c config) *XProjectStepClient {
+	return &XProjectStepClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `xprojectstep.Hooks(f(g(h())))`.
+func (c *XProjectStepClient) Use(hooks ...Hook) {
+	c.hooks.XProjectStep = append(c.hooks.XProjectStep, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `xprojectstep.Intercept(f(g(h())))`.
+func (c *XProjectStepClient) Intercept(interceptors ...Interceptor) {
+	c.inters.XProjectStep = append(c.inters.XProjectStep, interceptors...)
+}
+
+// Create returns a builder for creating a XProjectStep entity.
+func (c *XProjectStepClient) Create() *XProjectStepCreate {
+	mutation := newXProjectStepMutation(c.config, OpCreate)
+	return &XProjectStepCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of XProjectStep entities.
+func (c *XProjectStepClient) CreateBulk(builders ...*XProjectStepCreate) *XProjectStepCreateBulk {
+	return &XProjectStepCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *XProjectStepClient) MapCreateBulk(slice any, setFunc func(*XProjectStepCreate, int)) *XProjectStepCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &XProjectStepCreateBulk{err: fmt.Errorf("calling to XProjectStepClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*XProjectStepCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &XProjectStepCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for XProjectStep.
+func (c *XProjectStepClient) Update() *XProjectStepUpdate {
+	mutation := newXProjectStepMutation(c.config, OpUpdate)
+	return &XProjectStepUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *XProjectStepClient) UpdateOne(_m *XProjectStep) *XProjectStepUpdateOne {
+	mutation := newXProjectStepMutation(c.config, OpUpdateOne, withXProjectStep(_m))
+	return &XProjectStepUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *XProjectStepClient) UpdateOneID(id uuid.UUID) *XProjectStepUpdateOne {
+	mutation := newXProjectStepMutation(c.config, OpUpdateOne, withXProjectStepID(id))
+	return &XProjectStepUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for XProjectStep.
+func (c *XProjectStepClient) Delete() *XProjectStepDelete {
+	mutation := newXProjectStepMutation(c.config, OpDelete)
+	return &XProjectStepDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *XProjectStepClient) DeleteOne(_m *XProjectStep) *XProjectStepDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *XProjectStepClient) DeleteOneID(id uuid.UUID) *XProjectStepDeleteOne {
+	builder := c.Delete().Where(xprojectstep.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &XProjectStepDeleteOne{builder}
+}
+
+// Query returns a query builder for XProjectStep.
+func (c *XProjectStepClient) Query() *XProjectStepQuery {
+	return &XProjectStepQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeXProjectStep},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a XProjectStep entity by its id.
+func (c *XProjectStepClient) Get(ctx context.Context, id uuid.UUID) (*XProjectStep, error) {
+	return c.Query().Where(xprojectstep.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *XProjectStepClient) GetX(ctx context.Context, id uuid.UUID) *XProjectStep {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryProject queries the project edge of a XProjectStep.
+func (c *XProjectStepClient) QueryProject(_m *XProjectStep) *XProjectQuery {
+	query := (&XProjectClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(xprojectstep.Table, xprojectstep.FieldID, id),
+			sqlgraph.To(xproject.Table, xproject.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, xprojectstep.ProjectTable, xprojectstep.ProjectColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *XProjectStepClient) Hooks() []Hook {
+	return c.hooks.XProjectStep
+}
+
+// Interceptors returns the client interceptors.
+func (c *XProjectStepClient) Interceptors() []Interceptor {
+	return c.inters.XProjectStep
+}
+
+func (c *XProjectStepClient) mutate(ctx context.Context, m *XProjectStepMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&XProjectStepCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&XProjectStepUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&XProjectStepUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&XProjectStepDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown XProjectStep mutation op: %q", m.Op())
+	}
+}
+
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		XMeta []ent.Hook
+		XMeta, XProject, XProjectStep []ent.Hook
 	}
 	inters struct {
-		XMeta []ent.Interceptor
+		XMeta, XProject, XProjectStep []ent.Interceptor
 	}
 )

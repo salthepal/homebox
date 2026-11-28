@@ -20,14 +20,96 @@ var (
 		Columns:    XMetaColumns,
 		PrimaryKey: []*schema.Column{XMetaColumns[0]},
 	}
+	// XProjectsColumns holds the columns for the "x_projects" table.
+	XProjectsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "group_id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString, Size: 255},
+		{Name: "description", Type: field.TypeString, Default: ""},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"idea", "planning", "in_progress", "on_hold", "done", "cancelled"}, Default: "idea"},
+		{Name: "priority", Type: field.TypeInt, Default: 0},
+		{Name: "target_date", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "date", "sqlite3": "date"}},
+		{Name: "budget", Type: field.TypeFloat64, Nullable: true},
+		{Name: "started_at", Type: field.TypeTime, Nullable: true},
+		{Name: "completed_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// XProjectsTable holds the schema information for the "x_projects" table.
+	XProjectsTable = &schema.Table{
+		Name:       "x_projects",
+		Columns:    XProjectsColumns,
+		PrimaryKey: []*schema.Column{XProjectsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "xproject_group_id_status",
+				Unique:  false,
+				Columns: []*schema.Column{XProjectsColumns[1], XProjectsColumns[4]},
+			},
+		},
+	}
+	// XProjectStepsColumns holds the columns for the "x_project_steps" table.
+	XProjectStepsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "position", Type: field.TypeInt, Default: 0},
+		{Name: "title", Type: field.TypeString, Size: 255},
+		{Name: "notes", Type: field.TypeString, Default: ""},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"todo", "doing", "blocked", "done", "skipped"}, Default: "todo"},
+		{Name: "due_date", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "date", "sqlite3": "date"}},
+		{Name: "est_cost", Type: field.TypeFloat64, Nullable: true},
+		{Name: "actual_cost", Type: field.TypeFloat64, Nullable: true},
+		{Name: "url", Type: field.TypeString, Nullable: true},
+		{Name: "entity_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "log_as_maintenance", Type: field.TypeBool, Default: false},
+		{Name: "maintenance_entry_id", Type: field.TypeUUID, Nullable: true},
+		{Name: "completed_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "project_id", Type: field.TypeUUID},
+	}
+	// XProjectStepsTable holds the schema information for the "x_project_steps" table.
+	XProjectStepsTable = &schema.Table{
+		Name:       "x_project_steps",
+		Columns:    XProjectStepsColumns,
+		PrimaryKey: []*schema.Column{XProjectStepsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "x_project_steps_x_projects_steps",
+				Columns:    []*schema.Column{XProjectStepsColumns[15]},
+				RefColumns: []*schema.Column{XProjectsColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "xprojectstep_project_id_position",
+				Unique:  false,
+				Columns: []*schema.Column{XProjectStepsColumns[15], XProjectStepsColumns[1]},
+			},
+			{
+				Name:    "xprojectstep_entity_id",
+				Unique:  false,
+				Columns: []*schema.Column{XProjectStepsColumns[9]},
+			},
+		},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		XMetaTable,
+		XProjectsTable,
+		XProjectStepsTable,
 	}
 )
 
 func init() {
 	XMetaTable.Annotation = &entsql.Annotation{
 		Table: "x_meta",
+	}
+	XProjectsTable.Annotation = &entsql.Annotation{
+		Table: "x_projects",
+	}
+	XProjectStepsTable.ForeignKeys[0].RefTable = XProjectsTable
+	XProjectStepsTable.Annotation = &entsql.Annotation{
+		Table: "x_project_steps",
 	}
 }

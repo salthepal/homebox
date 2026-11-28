@@ -13,6 +13,8 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xmeta"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xproject"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xprojectstep"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -73,7 +75,9 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			xmeta.Table: xmeta.ValidColumn,
+			xmeta.Table:        xmeta.ValidColumn,
+			xproject.Table:     xproject.ValidColumn,
+			xprojectstep.Table: xprojectstep.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)
