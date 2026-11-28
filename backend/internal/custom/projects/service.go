@@ -30,12 +30,29 @@ type Maintenance interface {
 	ExistInGroup(ctx context.Context, gid uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]struct{}, error)
 }
 
+// Notifier is told which group's projects changed (the Google Calendar reconciler
+// implements it). It is optional and must not block.
+type Notifier interface {
+	Enqueue(gid uuid.UUID)
+}
+
 // Service holds the Projects business rules (.fork/PLAN.md §6) on top of Repo.
 type Service struct {
-	repo  *Repo
-	ents  Entities
-	maint Maintenance
-	now   func() time.Time
+	repo   *Repo
+	ents   Entities
+	maint  Maintenance
+	now    func() time.Time
+	notify Notifier
+}
+
+// SetNotifier registers who hears about project and step writes. Call it during startup,
+// before the service is used concurrently.
+func (s *Service) SetNotifier(n Notifier) { s.notify = n }
+
+func (s *Service) changed(gid uuid.UUID) {
+	if s.notify != nil {
+		s.notify.Enqueue(gid)
+	}
 }
 
 // NewService builds a Service.
@@ -116,6 +133,7 @@ func (s *Service) Create(ctx context.Context, gid uuid.UUID, in ProjectInput) (V
 	if err != nil {
 		return View{}, err
 	}
+	s.changed(gid)
 	return s.one(ctx, gid, p)
 }
 
@@ -125,12 +143,17 @@ func (s *Service) Update(ctx context.Context, gid, id uuid.UUID, in ProjectInput
 	if err != nil {
 		return View{}, err
 	}
+	s.changed(gid) // the project name and status show on its step events
 	return s.one(ctx, gid, p)
 }
 
 // Delete deletes a project.
 func (s *Service) Delete(ctx context.Context, gid, id uuid.UUID) error {
-	return s.repo.DeleteProject(ctx, gid, id)
+	if err := s.repo.DeleteProject(ctx, gid, id); err != nil {
+		return err
+	}
+	s.changed(gid)
+	return nil
 }
 
 // ListByEntity returns the group's projects linked to an item.
@@ -154,6 +177,7 @@ func (s *Service) SetEntities(ctx context.Context, gid, id uuid.UUID, entityIDs 
 	if err := s.repo.ReplaceEntities(ctx, gid, id, entityIDs); err != nil {
 		return View{}, err
 	}
+	s.changed(gid)
 	return s.Get(ctx, gid, id)
 }
 
@@ -184,6 +208,7 @@ func (s *Service) AddStep(ctx context.Context, gid, pid uuid.UUID, in StepInput)
 	if err != nil {
 		return Step{}, err
 	}
+	s.changed(gid)
 	if step.Status == StepDoing {
 		if err := s.suggestStart(ctx, gid, pid); err != nil {
 			return Step{}, err
@@ -204,6 +229,7 @@ func (s *Service) UpdateStep(ctx context.Context, gid, pid, sid uuid.UUID, in St
 	if err != nil {
 		return Step{}, err
 	}
+	s.changed(gid)
 	if step.Status == StepDoing {
 		if err := s.suggestStart(ctx, gid, pid); err != nil {
 			return Step{}, err
@@ -231,7 +257,11 @@ func (s *Service) suggestStart(ctx context.Context, gid, pid uuid.UUID) error {
 
 // DeleteStep removes a step.
 func (s *Service) DeleteStep(ctx context.Context, gid, pid, sid uuid.UUID) error {
-	return s.repo.DeleteStep(ctx, gid, pid, sid)
+	if err := s.repo.DeleteStep(ctx, gid, pid, sid); err != nil {
+		return err
+	}
+	s.changed(gid)
+	return nil
 }
 
 // ReorderSteps sets the step order.
@@ -239,6 +269,7 @@ func (s *Service) ReorderSteps(ctx context.Context, gid, pid uuid.UUID, order []
 	if err := s.repo.ReorderSteps(ctx, gid, pid, order); err != nil {
 		return View{}, err
 	}
+	s.changed(gid)
 	return s.Get(ctx, gid, pid)
 }
 
@@ -314,6 +345,7 @@ func (s *Service) CompleteStep(ctx context.Context, gid, pid, sid uuid.UUID, in 
 		}
 		return Step{}, err
 	}
+	s.changed(gid)
 	return done, nil
 }
 
