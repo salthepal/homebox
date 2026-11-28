@@ -121,7 +121,9 @@
           "log_needs_item": "Link this step to an item to log it as maintenance.",
           "confirm": "Mark complete"
         }
-      }
+      },
+      "load_failed": "Couldn't load this project.",
+      "retry": "Retry"
     }
   }
 }
