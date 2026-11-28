@@ -22,7 +22,7 @@
     description: "",
     status: "idea" as XProjectStatus,
     priority: "0",
-    targetDate: "",
+    target_date: "",
     budget: "",
   });
 
@@ -35,7 +35,7 @@
       form.description = p?.description ?? "";
       form.status = p?.status ?? "idea";
       form.priority = String(p?.priority ?? 0);
-      form.targetDate = toDateInput(p?.targetDate);
+      form.target_date = toDateInput(p?.target_date);
       form.budget = p?.budget != null ? String(p.budget) : "";
     },
     { immediate: true }
@@ -50,7 +50,7 @@
       description: form.description,
       status: form.status,
       priority: Number(form.priority),
-      targetDate: fromDateInput(form.targetDate),
+      target_date: fromDateInput(form.target_date),
       budget: parseMoney(form.budget),
     });
   }
@@ -97,7 +97,7 @@
           </div>
           <div class="flex flex-col gap-1.5">
             <Label for="x-p-target">{{ t("x.projects.form.target_date") }}</Label>
-            <Input id="x-p-target" v-model="form.targetDate" type="date" />
+            <Input id="x-p-target" v-model="form.target_date" type="date" />
           </div>
           <div class="flex flex-col gap-1.5">
             <Label for="x-p-budget">{{ t("x.projects.form.budget") }}</Label>

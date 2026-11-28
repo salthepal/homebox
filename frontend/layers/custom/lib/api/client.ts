@@ -15,36 +15,42 @@ export type XStepStatus = "todo" | "doing" | "blocked" | "done" | "skipped";
 
 export type XProjectStep = {
   id: string;
-  projectId: string;
+  project_id: string;
   position: number;
   title: string;
   notes: string;
   status: XStepStatus;
-  dueDate: string | null;
-  estCost: number | null;
-  actualCost: number | null;
+  due_date: string | null;
+  est_cost: number | null;
+  actual_cost: number | null;
   url: string | null;
-  entityId: string | null;
-  logAsMaintenance: boolean;
-  maintenanceEntryId: string | null;
-  completedAt: string | null;
+  entity_id: string | null;
+  log_as_maintenance: boolean;
+  maintenance_entry_id: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type XProject = {
   id: string;
-  groupId: string;
   name: string;
   description: string;
   status: XProjectStatus;
   priority: number;
-  targetDate: string | null;
+  target_date: string | null;
   budget: number | null;
-  startedAt: string | null;
-  completedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
   steps: XProjectStep[];
-  entityIds: string[];
+  entity_ids: string[];
+  entities: Array<{ id: string; name: string }>;
+  progress: { done: number; total: number };
+  est_cost_total: number;
+  actual_cost_total: number;
+  all_steps_complete: boolean;
 };
 
 export type XProjectInput = {
@@ -52,7 +58,7 @@ export type XProjectInput = {
   description: string;
   status?: XProjectStatus;
   priority: number;
-  targetDate: string | null;
+  target_date: string | null;
   budget: number | null;
 };
 
@@ -60,17 +66,17 @@ export type XStepInput = {
   title: string;
   notes: string;
   status?: XStepStatus;
-  dueDate: string | null;
-  estCost: number | null;
-  actualCost: number | null;
+  due_date: string | null;
+  est_cost: number | null;
+  actual_cost: number | null;
   url: string | null;
-  entityId: string | null;
-  logAsMaintenance: boolean;
+  entity_id: string | null;
+  log_as_maintenance: boolean;
 };
 
 export type XCompleteStepInput = {
-  actualCost?: number | null;
-  logAsMaintenance?: boolean;
+  actual_cost?: number | null;
+  log_as_maintenance?: boolean;
 };
 
 // ---- Client ---------------------------------------------------------------------------
@@ -100,41 +106,41 @@ export class CustomApi extends BaseAPI {
     return this.http.delete<void>({ url: route(`/x/projects/${id}`) });
   }
 
-  addStep(projectId: string, body: XStepInput) {
-    return this.http.post<XStepInput, XProjectStep>({ url: route(`/x/projects/${projectId}/steps`), body });
+  addStep(project_id: string, body: XStepInput) {
+    return this.http.post<XStepInput, XProjectStep>({ url: route(`/x/projects/${project_id}/steps`), body });
   }
 
-  updateStep(projectId: string, stepId: string, body: XStepInput) {
-    return this.http.put<XStepInput, XProjectStep>({ url: route(`/x/projects/${projectId}/steps/${stepId}`), body });
+  updateStep(project_id: string, stepId: string, body: XStepInput) {
+    return this.http.put<XStepInput, XProjectStep>({ url: route(`/x/projects/${project_id}/steps/${stepId}`), body });
   }
 
-  deleteStep(projectId: string, stepId: string) {
-    return this.http.delete<void>({ url: route(`/x/projects/${projectId}/steps/${stepId}`) });
+  deleteStep(project_id: string, stepId: string) {
+    return this.http.delete<void>({ url: route(`/x/projects/${project_id}/steps/${stepId}`) });
   }
 
-  reorderSteps(projectId: string, stepIds: string[]) {
-    return this.http.patch<{ stepIds: string[] }, void>({
-      url: route(`/x/projects/${projectId}/steps/order`),
-      body: { stepIds },
+  reorderSteps(project_id: string, step_ids: string[]) {
+    return this.http.patch<{ step_ids: string[] }, XProject>({
+      url: route(`/x/projects/${project_id}/steps/order`),
+      body: { step_ids },
     });
   }
 
-  completeStep(projectId: string, stepId: string, body: XCompleteStepInput) {
+  completeStep(project_id: string, stepId: string, body: XCompleteStepInput) {
     return this.http.post<XCompleteStepInput, XProjectStep>({
-      url: route(`/x/projects/${projectId}/steps/${stepId}/complete`),
+      url: route(`/x/projects/${project_id}/steps/${stepId}/complete`),
       body,
     });
   }
 
-  setProjectEntities(projectId: string, entityIds: string[]) {
-    return this.http.put<{ entityIds: string[] }, void>({
-      url: route(`/x/projects/${projectId}/entities`),
-      body: { entityIds },
+  setProjectEntities(project_id: string, entity_ids: string[]) {
+    return this.http.put<{ entity_ids: string[] }, XProject>({
+      url: route(`/x/projects/${project_id}/entities`),
+      body: { entity_ids },
     });
   }
 
-  projectsForEntity(entityId: string) {
-    return this.http.get<XProject[]>({ url: route(`/x/entities/${entityId}/projects`) });
+  projectsForEntity(entity_id: string) {
+    return this.http.get<XProject[]>({ url: route(`/x/entities/${entity_id}/projects`) });
   }
 }
 

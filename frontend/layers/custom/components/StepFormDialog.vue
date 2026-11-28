@@ -22,12 +22,12 @@
   const form = reactive({
     title: "",
     notes: "",
-    dueDate: "",
-    estCost: "",
-    actualCost: "",
+    due_date: "",
+    est_cost: "",
+    actual_cost: "",
     url: "",
-    entityId: null as string | null,
-    logAsMaintenance: false,
+    entity_id: null as string | null,
+    log_as_maintenance: false,
   });
 
   watch(
@@ -37,13 +37,13 @@
       const s = props.step;
       form.title = s?.title ?? "";
       form.notes = s?.notes ?? "";
-      form.dueDate = toDateInput(s?.dueDate);
-      form.estCost = s?.estCost != null ? String(s.estCost) : "";
-      form.actualCost = s?.actualCost != null ? String(s.actualCost) : "";
+      form.due_date = toDateInput(s?.due_date);
+      form.est_cost = s?.est_cost != null ? String(s.est_cost) : "";
+      form.actual_cost = s?.actual_cost != null ? String(s.actual_cost) : "";
       form.url = s?.url ?? "";
-      form.entityId = s?.entityId ?? null;
-      form.logAsMaintenance = s?.logAsMaintenance ?? false;
-      await resolve([form.entityId]);
+      form.entity_id = s?.entity_id ?? null;
+      form.log_as_maintenance = s?.log_as_maintenance ?? false;
+      await resolve([form.entity_id]);
     },
     { immediate: true }
   );
@@ -51,14 +51,14 @@
   const valid = computed(() => form.title.trim().length > 0 && form.title.length <= 255);
 
   async function pickItem(item: { id: string; name: string }) {
-    form.entityId = item.id;
-    form.logAsMaintenance = true;
+    form.entity_id = item.id;
+    form.log_as_maintenance = true;
     await resolve([item.id]);
   }
 
   function clearItem() {
-    form.entityId = null;
-    form.logAsMaintenance = false;
+    form.entity_id = null;
+    form.log_as_maintenance = false;
   }
 
   function submit() {
@@ -66,12 +66,12 @@
     emit("submit", {
       title: form.title.trim(),
       notes: form.notes,
-      dueDate: fromDateInput(form.dueDate),
-      estCost: parseMoney(form.estCost),
-      actualCost: parseMoney(form.actualCost),
+      due_date: fromDateInput(form.due_date),
+      est_cost: parseMoney(form.est_cost),
+      actual_cost: parseMoney(form.actual_cost),
       url: form.url.trim() || null,
-      entityId: form.entityId,
-      logAsMaintenance: form.entityId ? form.logAsMaintenance : false,
+      entity_id: form.entity_id,
+      log_as_maintenance: form.entity_id ? form.log_as_maintenance : false,
     });
   }
 </script>
@@ -95,15 +95,15 @@
         <div class="grid grid-cols-3 gap-3">
           <div class="flex flex-col gap-1.5">
             <Label for="x-s-due">{{ t("x.projects.steps.form.due_date") }}</Label>
-            <Input id="x-s-due" v-model="form.dueDate" type="date" />
+            <Input id="x-s-due" v-model="form.due_date" type="date" />
           </div>
           <div class="flex flex-col gap-1.5">
             <Label for="x-s-est">{{ t("x.projects.steps.form.est_cost") }}</Label>
-            <Input id="x-s-est" v-model="form.estCost" type="number" min="0" step="0.01" inputmode="decimal" />
+            <Input id="x-s-est" v-model="form.est_cost" type="number" min="0" step="0.01" inputmode="decimal" />
           </div>
           <div class="flex flex-col gap-1.5">
             <Label for="x-s-act">{{ t("x.projects.steps.form.actual_cost") }}</Label>
-            <Input id="x-s-act" v-model="form.actualCost" type="number" min="0" step="0.01" inputmode="decimal" />
+            <Input id="x-s-act" v-model="form.actual_cost" type="number" min="0" step="0.01" inputmode="decimal" />
           </div>
         </div>
         <div class="flex flex-col gap-1.5">
@@ -114,10 +114,10 @@
         <div class="flex flex-col gap-1.5">
           <Label>{{ t("x.projects.steps.form.item") }}</Label>
           <div
-            v-if="form.entityId"
+            v-if="form.entity_id"
             class="flex items-center justify-between gap-2 rounded-md border px-3 py-1.5 text-sm"
           >
-            <span class="truncate">{{ nameOf(form.entityId) }}</span>
+            <span class="truncate">{{ nameOf(form.entity_id) }}</span>
             <Button type="button" size="sm" variant="ghost" @click="clearItem">
               {{ t("x.projects.steps.form.no_item") }}
             </Button>
@@ -125,8 +125,8 @@
           <ItemPicker v-else @pick="pickItem" />
         </div>
 
-        <label v-if="form.entityId" class="flex items-center gap-2 text-sm">
-          <input v-model="form.logAsMaintenance" type="checkbox" class="size-4" />
+        <label v-if="form.entity_id" class="flex items-center gap-2 text-sm">
+          <input v-model="form.log_as_maintenance" type="checkbox" class="size-4" />
           {{ t("x.projects.steps.form.log_as_maintenance") }}
         </label>
 

@@ -8,14 +8,17 @@
 
   const props = defineProps<{ project: XProject }>();
   const { t } = useI18n();
-  const { resolve, nameOf } = useItemNames();
+  const { resolve, seed, nameOf } = useItemNames();
 
   const progress = computed(() => projectProgress(props.project));
   const costs = computed(() => projectCosts(props.project));
 
   watch(
-    () => props.project.entityIds,
-    ids => resolve(ids),
+    () => props.project.entity_ids,
+    ids => {
+      seed(props.project.entities);
+      return resolve(ids);
+    },
     { immediate: true }
   );
 </script>
@@ -52,11 +55,13 @@
             : t("x.projects.card.cost_no_budget", { actual: formatMoney(costs.actual) })
         }}
       </span>
-      <span v-if="project.targetDate">{{ t("x.projects.card.target", { date: formatDate(project.targetDate) }) }}</span>
+      <span v-if="project.target_date">{{
+        t("x.projects.card.target", { date: formatDate(project.target_date) })
+      }}</span>
     </div>
 
-    <div v-if="project.entityIds.length" class="flex flex-wrap gap-1">
-      <Badge v-for="id in project.entityIds" :key="id" variant="secondary" class="max-w-full truncate">
+    <div v-if="project.entity_ids.length" class="flex flex-wrap gap-1">
+      <Badge v-for="id in project.entity_ids" :key="id" variant="secondary" class="max-w-full truncate">
         {{ nameOf(id) }}
       </Badge>
     </div>

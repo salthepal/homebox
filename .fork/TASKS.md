@@ -76,9 +76,11 @@ Tables from PLAN §6 as `00002_x_projects.sql` (postgres + sqlite3), ent schemas
 
 **Status (2026-11-28):** done (stacked on P1). Adapters in `upstream/entities.go` (names, exists-in-group; bulk reads via upstream's ent client) and `upstream/maintenance.go` (create completed entry via upstream's repo, delete, exists-in-group). Service rules and the daily sweeper (`x-projects-sweep`, registered in `registerCustom`) are in `internal/custom/projects` (`service.go`, `sweep.go`). Handlers: `internal/custom/api/projects.go` (JSON is snake_case, dates `YYYY-MM-DD`; step/project bodies are full replaces; unknown fields are rejected). API tests are in `backend/app/api/x_projects_test.go` (`TestCustomProjects*`) and pass on SQLite and Postgres 16. Error mapping: other group's or missing ID → 404; validation, unknown item, bad IDs → 400; completing a done step → 409.
 
-### [ ] P3 · Projects UI
+### [x] P3 · Projects UI
 Pages `/x/projects` and `/x/projects/[id]` per PLAN §6. Use existing shadcn components from `frontend/components/ui` (import them explicitly). Strings in the layer locale. Responsive.
 **Done when:** FE passes. Manual check: create a project, add, reorder and complete steps, link two items, and confirm progress and cost totals update. Screenshots in the PR.
+
+**Status (2026-11-28):** done (stacked on P2). Pages `/x/projects` (status board: grid of sections, terminal statuses hidden while empty) and `/x/projects/[id]` (status select, edit/delete, linked-item picker, step list with up/down reorder, per-step status, complete dialog, "all steps done, mark project done?" prompt). Verified in Playwright against a real backend on Postgres: created a project, linked two items, added three steps, reordered, completed steps (with "log as maintenance" on), and the progress, estimated and spent totals updated. The NAS item then had two new maintenance entries (cost 75.25 and 0, "From project: ..."). Screenshots are in `.fork/screenshots/p3/`. UI pieces P4 can reuse: `components/ProjectCard.vue`, `ProjectFormDialog.vue`, `StepCompleteDialog.vue`, `ItemPicker.vue`, `composables/useItemNames.ts`, `lib/projects.ts` helpers, and the project methods on `CustomApi` (`projectsForEntity` is already there).
 
 ### [ ] P4 · Item tab + maintenance logging UX
 `customItemTabs` returns the "Projects" tab. `pages/item/[id]/index/projects.vue` lists linked projects with "New project for this item" (pre-linked). The complete-step dialog has a "log as maintenance" toggle (default on when the step has an item).
@@ -129,3 +131,5 @@ Per-group revocable token (stored hashed), `GET /api/v1/x/calendar/{token}.ics`,
 - **Frontend API:** add methods to `CustomApi` in `layers/custom/lib/api/client.ts` and use `useCustomApi()`. It shares upstream's auth, X-Tenant and 401 handling.
 - **Browser check:** `pnpm dev --port 3000` in `frontend/` proxies `/api` to `localhost:7745`. Run the backend binary on 7745. The first page load takes ~1–3 min while Vite pre-bundles.
 - **Local Postgres in a cloud session:** `/usr/lib/postgresql/16/bin/initdb` + `pg_ctl` as the `postgres` user, data dir under `/var/tmp`. `TEST_X_PG_DSN=postgres://postgres@localhost:5432/postgres?sslmode=disable`.
+- **Custom dialogs:** upstream's `Dialog` is bound to a fixed `DialogID` enum in `dialog-provider`, so layer dialogs use reka-ui's `DialogRoot` with `v-model:open` and the `ui/dialog` content parts instead.
+- **Custom JSON is snake_case:** `CustomApi` types mirror the Go handlers (`target_date`, `entity_ids`, ...), not upstream's camelCase.

@@ -53,7 +53,7 @@
   const api = useCustomApi();
   const route = useRoute();
   const router = useRouter();
-  const { resolve, nameOf } = useItemNames();
+  const { resolve, seed, nameOf } = useItemNames();
 
   definePageMeta({
     middleware: ["auth"],
@@ -78,7 +78,8 @@
     }
     notFound.value = false;
     project.value = resp.data;
-    await resolve([...resp.data.entityIds, ...resp.data.steps.map(s => s.entityId)]);
+    seed(resp.data.entities);
+    await resolve([...resp.data.entity_ids, ...resp.data.steps.map(s => s.entity_id)]);
   }
   await load();
 
@@ -93,7 +94,7 @@
       description: p.description,
       status: p.status,
       priority: p.priority,
-      targetDate: p.targetDate ? p.targetDate.slice(0, 10) : null,
+      target_date: p.target_date ? p.target_date.slice(0, 10) : null,
       budget: p.budget,
       ...patch,
     };
@@ -152,12 +153,12 @@
     await run(() => api.setProjectEntities(projectId.value, ids));
   }
   async function linkItem(item: { id: string; name: string }) {
-    if (!project.value || project.value.entityIds.includes(item.id)) return;
-    await setEntities([...project.value.entityIds, item.id]);
+    if (!project.value || project.value.entity_ids.includes(item.id)) return;
+    await setEntities([...project.value.entity_ids, item.id]);
   }
   async function unlinkItem(id: string) {
     if (!project.value) return;
-    await setEntities(project.value.entityIds.filter(e => e !== id));
+    await setEntities(project.value.entity_ids.filter(e => e !== id));
   }
 
   // ---- steps ----
@@ -198,12 +199,12 @@
       title: s.title,
       notes: s.notes,
       status: s.status,
-      dueDate: s.dueDate ? s.dueDate.slice(0, 10) : null,
-      estCost: s.estCost,
-      actualCost: s.actualCost,
+      due_date: s.due_date ? s.due_date.slice(0, 10) : null,
+      est_cost: s.est_cost,
+      actual_cost: s.actual_cost,
       url: s.url,
-      entityId: s.entityId,
-      logAsMaintenance: s.logAsMaintenance,
+      entity_id: s.entity_id,
+      log_as_maintenance: s.log_as_maintenance,
       ...patch,
     };
   }
@@ -279,14 +280,14 @@
             <Badge v-if="project.priority > 0" variant="outline">{{
               t(`x.projects.priority.${project.priority}`)
             }}</Badge>
-            <span v-if="project.targetDate" class="text-muted-foreground">
-              {{ t("x.projects.card.target", { date: formatDate(project.targetDate) }) }}
+            <span v-if="project.target_date" class="text-muted-foreground">
+              {{ t("x.projects.card.target", { date: formatDate(project.target_date) }) }}
             </span>
-            <span v-if="project.startedAt" class="text-muted-foreground">
-              {{ t("x.projects.detail.started", { date: formatDate(project.startedAt) }) }}
+            <span v-if="project.started_at" class="text-muted-foreground">
+              {{ t("x.projects.detail.started", { date: formatDate(project.started_at) }) }}
             </span>
-            <span v-if="project.completedAt" class="text-muted-foreground">
-              {{ t("x.projects.detail.completed", { date: formatDate(project.completedAt) }) }}
+            <span v-if="project.completed_at" class="text-muted-foreground">
+              {{ t("x.projects.detail.completed", { date: formatDate(project.completed_at) }) }}
             </span>
           </div>
 
@@ -341,9 +342,11 @@
         <!-- linked items -->
         <section class="flex flex-col gap-2">
           <h2 class="text-lg font-semibold">{{ t("x.projects.items.title") }}</h2>
-          <p v-if="!project.entityIds.length" class="text-sm text-muted-foreground">{{ t("x.projects.items.none") }}</p>
+          <p v-if="!project.entity_ids.length" class="text-sm text-muted-foreground">
+            {{ t("x.projects.items.none") }}
+          </p>
           <div v-else class="flex flex-wrap gap-2" data-testid="x-linked-items">
-            <Badge v-for="id in project.entityIds" :key="id" variant="secondary" class="gap-1 pr-1">
+            <Badge v-for="id in project.entity_ids" :key="id" variant="secondary" class="gap-1 pr-1">
               <NuxtLink :to="`/item/${id}`" class="hover:underline">{{ nameOf(id) }}</NuxtLink>
               <button
                 type="button"
@@ -357,7 +360,7 @@
             </Badge>
           </div>
           <div class="max-w-sm">
-            <ItemPicker :exclude="project.entityIds" :placeholder="t('x.projects.items.add')" @pick="linkItem" />
+            <ItemPicker :exclude="project.entity_ids" :placeholder="t('x.projects.items.add')" @pick="linkItem" />
           </div>
         </section>
 
@@ -392,20 +395,20 @@
                 </div>
                 <p v-if="s.notes" class="whitespace-pre-line pl-7 text-sm text-muted-foreground">{{ s.notes }}</p>
                 <div class="flex flex-wrap items-center gap-x-3 gap-y-1 pl-7 text-xs text-muted-foreground">
-                  <span v-if="s.dueDate">{{ t("x.projects.steps.due", { date: formatDate(s.dueDate) }) }}</span>
-                  <span v-if="s.estCost !== null">{{
-                    t("x.projects.steps.est", { cost: formatMoney(s.estCost) })
+                  <span v-if="s.due_date">{{ t("x.projects.steps.due", { date: formatDate(s.due_date) }) }}</span>
+                  <span v-if="s.est_cost !== null">{{
+                    t("x.projects.steps.est", { cost: formatMoney(s.est_cost) })
                   }}</span>
-                  <span v-if="s.actualCost !== null">{{
-                    t("x.projects.steps.actual", { cost: formatMoney(s.actualCost) })
+                  <span v-if="s.actual_cost !== null">{{
+                    t("x.projects.steps.actual", { cost: formatMoney(s.actual_cost) })
                   }}</span>
-                  <NuxtLink v-if="s.entityId" :to="`/item/${s.entityId}`" class="hover:underline">
-                    {{ nameOf(s.entityId) }}
+                  <NuxtLink v-if="s.entity_id" :to="`/item/${s.entity_id}`" class="hover:underline">
+                    {{ nameOf(s.entity_id) }}
                   </NuxtLink>
                   <a v-if="s.url" :href="s.url" target="_blank" rel="noopener noreferrer" class="underline">{{
                     s.url
                   }}</a>
-                  <Badge v-if="s.maintenanceEntryId" variant="outline">{{ t("x.projects.steps.logged") }}</Badge>
+                  <Badge v-if="s.maintenance_entry_id" variant="outline">{{ t("x.projects.steps.logged") }}</Badge>
                 </div>
               </div>
 

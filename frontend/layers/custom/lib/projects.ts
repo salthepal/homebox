@@ -49,8 +49,8 @@ export function projectCosts(p: Pick<XProject, "steps" | "budget">): {
   budget: number | null;
   overBudget: boolean;
 } {
-  const estimated = p.steps.reduce((sum, s) => sum + (s.estCost ?? 0), 0);
-  const actual = p.steps.reduce((sum, s) => sum + (s.actualCost ?? 0), 0);
+  const estimated = p.steps.reduce((sum, s) => sum + (s.est_cost ?? 0), 0);
+  const actual = p.steps.reduce((sum, s) => sum + (s.actual_cost ?? 0), 0);
   return { estimated, actual, budget: p.budget, overBudget: p.budget !== null && actual > p.budget };
 }
 

@@ -19,11 +19,19 @@ export function useItemNames() {
     );
   }
 
+  /** Seeds the cache from names the server already returned (project.entities), avoiding lookups. */
+  function seed(entities: Array<{ id: string; name: string }> | null | undefined) {
+    if (!entities?.length) return;
+    const next = { ...names.value };
+    for (const e of entities) next[e.id] = e.name;
+    names.value = next;
+  }
+
   function nameOf(id: string | null | undefined): string {
     if (!id) return "";
     const n = names.value[id];
     return n === undefined ? "…" : (n ?? "(deleted item)");
   }
 
-  return { names, resolve, nameOf };
+  return { names, resolve, seed, nameOf };
 }

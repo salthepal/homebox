@@ -17,30 +17,30 @@
   const { t } = useI18n();
   const { resolve, nameOf } = useItemNames();
 
-  const actualCost = ref("");
-  const logAsMaintenance = ref(false);
-  const hasItem = computed(() => !!props.step?.entityId);
+  const actual_cost = ref("");
+  const log_as_maintenance = ref(false);
+  const hasItem = computed(() => !!props.step?.entity_id);
 
   watch(
     open,
     async isOpen => {
       if (!isOpen || !props.step) return;
-      actualCost.value =
-        props.step.actualCost != null
-          ? String(props.step.actualCost)
-          : props.step.estCost != null
-            ? String(props.step.estCost)
+      actual_cost.value =
+        props.step.actual_cost != null
+          ? String(props.step.actual_cost)
+          : props.step.est_cost != null
+            ? String(props.step.est_cost)
             : "";
-      logAsMaintenance.value = !!props.step.entityId;
-      await resolve([props.step.entityId]);
+      log_as_maintenance.value = !!props.step.entity_id;
+      await resolve([props.step.entity_id]);
     },
     { immediate: true }
   );
 
   function submit() {
     emit("submit", {
-      actualCost: parseMoney(actualCost.value),
-      logAsMaintenance: hasItem.value && logAsMaintenance.value,
+      actual_cost: parseMoney(actual_cost.value),
+      log_as_maintenance: hasItem.value && log_as_maintenance.value,
     });
   }
 </script>
@@ -57,13 +57,13 @@
 
         <div class="flex flex-col gap-1.5">
           <Label for="x-c-cost">{{ t("x.projects.steps.complete_dialog.actual_cost") }}</Label>
-          <Input id="x-c-cost" v-model="actualCost" type="number" min="0" step="0.01" inputmode="decimal" autofocus />
+          <Input id="x-c-cost" v-model="actual_cost" type="number" min="0" step="0.01" inputmode="decimal" autofocus />
         </div>
 
         <div class="flex flex-col gap-1">
           <label class="flex items-center gap-2 text-sm" :class="hasItem ? '' : 'opacity-60'">
             <input
-              v-model="logAsMaintenance"
+              v-model="log_as_maintenance"
               type="checkbox"
               class="size-4"
               :disabled="!hasItem"
@@ -74,7 +74,7 @@
           <span class="text-xs text-muted-foreground">
             {{
               hasItem
-                ? t("x.projects.steps.complete_dialog.log_hint", { item: nameOf(step?.entityId) })
+                ? t("x.projects.steps.complete_dialog.log_hint", { item: nameOf(step?.entity_id) })
                 : t("x.projects.steps.complete_dialog.log_needs_item")
             }}
           </span>
