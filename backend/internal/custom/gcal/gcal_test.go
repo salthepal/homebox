@@ -23,6 +23,8 @@ import (
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/xtest"
 )
 
+const householdCal = "household@group.calendar.google.com"
+
 var testKey = bytes.Repeat([]byte{7}, 32)
 
 func testConfig() xconfig.Config {
@@ -212,7 +214,7 @@ func TestXGcalClientEvents(t *testing.T) {
 	f := gcaltest.New(t)
 	c := &gcal.Client{HTTP: &http.Client{Transport: bearer{}}, BaseURL: f.Server.URL + "/calendar"}
 	ctx := context.Background()
-	cal := "household@group.calendar.google.com"
+	cal := householdCal
 
 	ours := gcal.Event{
 		Summary: "🔧 Furnace: filter", Start: &gcal.EventDate{Date: "2027-01-05"}, End: &gcal.EventDate{Date: "2027-01-06"},
@@ -322,10 +324,10 @@ func TestXGcalConnectFlow(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, cals, 2)
 	assert.Equal(t, "owner@example.com", cals[0].ID)
-	assert.Equal(t, "household@group.calendar.google.com", cals[1].ID)
+	assert.Equal(t, householdCal, cals[1].ID)
 
 	// Choose the shared calendar.
-	hh := "household@group.calendar.google.com"
+	hh := householdCal
 	require.NoError(t, e.svc.UpdateSettings(ctx, e.gid, gcal.SettingsInput{CalendarID: &hh}))
 	st, _ = e.svc.Status(ctx, e.gid)
 	assert.Equal(t, hh, st.CalendarID)
@@ -474,7 +476,7 @@ func TestXGcalDisconnect(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	e.connect(t)
-	hh := "household@group.calendar.google.com"
+	hh := householdCal
 	require.NoError(t, e.svc.UpdateSettings(ctx, e.gid, gcal.SettingsInput{CalendarID: &hh}))
 
 	mark := &gcal.ExtendedProperties{Private: map[string]string{gcal.OwnerProperty: gcal.OwnerValue}}
@@ -520,7 +522,7 @@ func TestXGcalDisconnectKeepsEvents(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	e.connect(t)
-	hh := "household@group.calendar.google.com"
+	hh := householdCal
 	require.NoError(t, e.svc.UpdateSettings(ctx, e.gid, gcal.SettingsInput{CalendarID: &hh}))
 	mark := &gcal.ExtendedProperties{Private: map[string]string{gcal.OwnerProperty: gcal.OwnerValue}}
 	id := e.fake.AddEvent(hh, gcal.Event{Summary: "🔧", ExtendedProperties: mark})
@@ -536,7 +538,7 @@ func TestXGcalDisconnectBrokenSkipsRemoval(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	e.connect(t)
-	hh := "household@group.calendar.google.com"
+	hh := householdCal
 	require.NoError(t, e.svc.UpdateSettings(ctx, e.gid, gcal.SettingsInput{CalendarID: &hh}))
 	e.fake.Set(func(f *gcaltest.Fake) { f.InvalidGrant = true })
 	_, err := e.svc.Calendars(ctx, e.gid)
@@ -553,7 +555,7 @@ func TestXGcalDisconnectFailureKeepsConnection(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	e.connect(t)
-	hh := "household@group.calendar.google.com"
+	hh := householdCal
 	require.NoError(t, e.svc.UpdateSettings(ctx, e.gid, gcal.SettingsInput{CalendarID: &hh}))
 	mark := &gcal.ExtendedProperties{Private: map[string]string{gcal.OwnerProperty: gcal.OwnerValue}}
 	id := e.fake.AddEvent(hh, gcal.Event{Summary: "🔧", ExtendedProperties: mark})
