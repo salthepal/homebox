@@ -18,6 +18,7 @@
     AlertDialogTitle,
   } from "@/components/ui/alert-dialog";
   import { toast } from "@/components/ui/sonner";
+  import IcsFeedCard from "../../../components/IcsFeedCard.vue";
   import { useCustomApi } from "../../../lib/api/client";
   import type { XGcalCalendar, XGcalStatus } from "../../../lib/api/client";
 
@@ -413,6 +414,8 @@
           </div>
         </div>
       </template>
+
+      <IcsFeedCard v-if="!loading" />
     </BaseContainer>
 
     <AlertDialog v-model:open="disconnectOpen">

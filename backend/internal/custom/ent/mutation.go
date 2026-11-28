@@ -15,6 +15,7 @@ import (
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/predicate"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xgcalconnection"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xgcallink"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xicsfeed"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xmeta"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xproject"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xprojectstep"
@@ -31,6 +32,7 @@ const (
 	// Node types.
 	TypeXGcalConnection = "XGcalConnection"
 	TypeXGcalLink       = "XGcalLink"
+	TypeXIcsFeed        = "XIcsFeed"
 	TypeXMeta           = "XMeta"
 	TypeXProject        = "XProject"
 	TypeXProjectStep    = "XProjectStep"
@@ -1674,6 +1676,522 @@ func (m *XGcalLinkMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *XGcalLinkMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown XGcalLink edge %s", name)
+}
+
+// XIcsFeedMutation represents an operation that mutates the XIcsFeed nodes in the graph.
+type XIcsFeedMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *uuid.UUID
+	token_hash    *string
+	created_by    *uuid.UUID
+	created_at    *time.Time
+	rotated_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*XIcsFeed, error)
+	predicates    []predicate.XIcsFeed
+}
+
+var _ ent.Mutation = (*XIcsFeedMutation)(nil)
+
+// xicsfeedOption allows management of the mutation configuration using functional options.
+type xicsfeedOption func(*XIcsFeedMutation)
+
+// newXIcsFeedMutation creates new mutation for the XIcsFeed entity.
+func newXIcsFeedMutation(c config, op Op, opts ...xicsfeedOption) *XIcsFeedMutation {
+	m := &XIcsFeedMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeXIcsFeed,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withXIcsFeedID sets the ID field of the mutation.
+func withXIcsFeedID(id uuid.UUID) xicsfeedOption {
+	return func(m *XIcsFeedMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *XIcsFeed
+		)
+		m.oldValue = func(ctx context.Context) (*XIcsFeed, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().XIcsFeed.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withXIcsFeed sets the old XIcsFeed of the mutation.
+func withXIcsFeed(node *XIcsFeed) xicsfeedOption {
+	return func(m *XIcsFeedMutation) {
+		m.oldValue = func(context.Context) (*XIcsFeed, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m XIcsFeedMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m XIcsFeedMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of XIcsFeed entities.
+func (m *XIcsFeedMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *XIcsFeedMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *XIcsFeedMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().XIcsFeed.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetTokenHash sets the "token_hash" field.
+func (m *XIcsFeedMutation) SetTokenHash(s string) {
+	m.token_hash = &s
+}
+
+// TokenHash returns the value of the "token_hash" field in the mutation.
+func (m *XIcsFeedMutation) TokenHash() (r string, exists bool) {
+	v := m.token_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTokenHash returns the old "token_hash" field's value of the XIcsFeed entity.
+// If the XIcsFeed object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XIcsFeedMutation) OldTokenHash(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTokenHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTokenHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTokenHash: %w", err)
+	}
+	return oldValue.TokenHash, nil
+}
+
+// ResetTokenHash resets all changes to the "token_hash" field.
+func (m *XIcsFeedMutation) ResetTokenHash() {
+	m.token_hash = nil
+}
+
+// SetCreatedBy sets the "created_by" field.
+func (m *XIcsFeedMutation) SetCreatedBy(u uuid.UUID) {
+	m.created_by = &u
+}
+
+// CreatedBy returns the value of the "created_by" field in the mutation.
+func (m *XIcsFeedMutation) CreatedBy() (r uuid.UUID, exists bool) {
+	v := m.created_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedBy returns the old "created_by" field's value of the XIcsFeed entity.
+// If the XIcsFeed object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XIcsFeedMutation) OldCreatedBy(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedBy: %w", err)
+	}
+	return oldValue.CreatedBy, nil
+}
+
+// ResetCreatedBy resets all changes to the "created_by" field.
+func (m *XIcsFeedMutation) ResetCreatedBy() {
+	m.created_by = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *XIcsFeedMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *XIcsFeedMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the XIcsFeed entity.
+// If the XIcsFeed object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XIcsFeedMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *XIcsFeedMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetRotatedAt sets the "rotated_at" field.
+func (m *XIcsFeedMutation) SetRotatedAt(t time.Time) {
+	m.rotated_at = &t
+}
+
+// RotatedAt returns the value of the "rotated_at" field in the mutation.
+func (m *XIcsFeedMutation) RotatedAt() (r time.Time, exists bool) {
+	v := m.rotated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRotatedAt returns the old "rotated_at" field's value of the XIcsFeed entity.
+// If the XIcsFeed object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XIcsFeedMutation) OldRotatedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRotatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRotatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRotatedAt: %w", err)
+	}
+	return oldValue.RotatedAt, nil
+}
+
+// ClearRotatedAt clears the value of the "rotated_at" field.
+func (m *XIcsFeedMutation) ClearRotatedAt() {
+	m.rotated_at = nil
+	m.clearedFields[xicsfeed.FieldRotatedAt] = struct{}{}
+}
+
+// RotatedAtCleared returns if the "rotated_at" field was cleared in this mutation.
+func (m *XIcsFeedMutation) RotatedAtCleared() bool {
+	_, ok := m.clearedFields[xicsfeed.FieldRotatedAt]
+	return ok
+}
+
+// ResetRotatedAt resets all changes to the "rotated_at" field.
+func (m *XIcsFeedMutation) ResetRotatedAt() {
+	m.rotated_at = nil
+	delete(m.clearedFields, xicsfeed.FieldRotatedAt)
+}
+
+// Where appends a list predicates to the XIcsFeedMutation builder.
+func (m *XIcsFeedMutation) Where(ps ...predicate.XIcsFeed) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the XIcsFeedMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *XIcsFeedMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.XIcsFeed, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *XIcsFeedMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *XIcsFeedMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (XIcsFeed).
+func (m *XIcsFeedMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *XIcsFeedMutation) Fields() []string {
+	fields := make([]string, 0, 4)
+	if m.token_hash != nil {
+		fields = append(fields, xicsfeed.FieldTokenHash)
+	}
+	if m.created_by != nil {
+		fields = append(fields, xicsfeed.FieldCreatedBy)
+	}
+	if m.created_at != nil {
+		fields = append(fields, xicsfeed.FieldCreatedAt)
+	}
+	if m.rotated_at != nil {
+		fields = append(fields, xicsfeed.FieldRotatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *XIcsFeedMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case xicsfeed.FieldTokenHash:
+		return m.TokenHash()
+	case xicsfeed.FieldCreatedBy:
+		return m.CreatedBy()
+	case xicsfeed.FieldCreatedAt:
+		return m.CreatedAt()
+	case xicsfeed.FieldRotatedAt:
+		return m.RotatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *XIcsFeedMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case xicsfeed.FieldTokenHash:
+		return m.OldTokenHash(ctx)
+	case xicsfeed.FieldCreatedBy:
+		return m.OldCreatedBy(ctx)
+	case xicsfeed.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case xicsfeed.FieldRotatedAt:
+		return m.OldRotatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown XIcsFeed field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *XIcsFeedMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case xicsfeed.FieldTokenHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTokenHash(v)
+		return nil
+	case xicsfeed.FieldCreatedBy:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedBy(v)
+		return nil
+	case xicsfeed.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case xicsfeed.FieldRotatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRotatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown XIcsFeed field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *XIcsFeedMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *XIcsFeedMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *XIcsFeedMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown XIcsFeed numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *XIcsFeedMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(xicsfeed.FieldRotatedAt) {
+		fields = append(fields, xicsfeed.FieldRotatedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *XIcsFeedMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *XIcsFeedMutation) ClearField(name string) error {
+	switch name {
+	case xicsfeed.FieldRotatedAt:
+		m.ClearRotatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown XIcsFeed nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *XIcsFeedMutation) ResetField(name string) error {
+	switch name {
+	case xicsfeed.FieldTokenHash:
+		m.ResetTokenHash()
+		return nil
+	case xicsfeed.FieldCreatedBy:
+		m.ResetCreatedBy()
+		return nil
+	case xicsfeed.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case xicsfeed.FieldRotatedAt:
+		m.ResetRotatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown XIcsFeed field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *XIcsFeedMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *XIcsFeedMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *XIcsFeedMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *XIcsFeedMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *XIcsFeedMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *XIcsFeedMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *XIcsFeedMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown XIcsFeed unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *XIcsFeedMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown XIcsFeed edge %s", name)
 }
 
 // XMetaMutation represents an operation that mutates the XMeta nodes in the graph.

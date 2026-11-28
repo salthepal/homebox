@@ -46,6 +46,8 @@ func registerCustomGcal(a *app, xcfg xconfig.Config, xc *xent.Client, runner *gr
 	if deps.Projects != nil {
 		deps.Projects.SetNotifier(rec) // project and step writes enqueue a debounced reconcile
 	}
+	deps.IcsFeed = upstream.NewMaintenanceReader(a.db) // ICS feed
+	deps.IcsGroups = upstream.NewGroups(a.db)
 	if !xcfg.GcalEnabled() {
 		return
 	}

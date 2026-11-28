@@ -33,6 +33,18 @@ func (f XGcalLinkFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, e
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.XGcalLinkMutation", m)
 }
 
+// The XIcsFeedFunc type is an adapter to allow the use of ordinary
+// function as XIcsFeed mutator.
+type XIcsFeedFunc func(context.Context, *ent.XIcsFeedMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f XIcsFeedFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.XIcsFeedMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.XIcsFeedMutation", m)
+}
+
 // The XMetaFunc type is an adapter to allow the use of ordinary
 // function as XMeta mutator.
 type XMetaFunc func(context.Context, *ent.XMetaMutation) (ent.Value, error)

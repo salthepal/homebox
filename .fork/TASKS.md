@@ -140,8 +140,20 @@ Pages `/x/projects` and `/x/projects/[id]` per PLAN §6. Use existing shadcn com
 - `gcalReconcilerOptions` in `x_gcal_register.go` is a package var so tests can shorten the 10 s debounce.
 - Real-calendar check (owner, after deploying): give a project step a due date and within ~10 s a 📋 all-day event linking to the project appears; complete the step without logging maintenance and it becomes ✅ on the due date; turn "include project steps" off in `/x/calendar` and the step events disappear.
 
-### [ ] G4 · (optional) ICS feed
+### [x] G4 · (optional) ICS feed
 Per-group revocable token (stored hashed), `GET /api/v1/x/calendar/{token}.ics`, outside the auth middleware, rate-limited. Needs a Cloudflare Access bypass for that path only.
+
+**Status (2026-11-28):** done. Migration `00004_x_ics.sql` (table `x_ics_feeds`, one row per group, only the SHA-256 of the token is stored). `internal/custom/ics`: RFC 5545 writer (CRLF, 75-octet folding that never splits a UTF-8 sequence, TEXT escaping, stable `UID`s, all-day `DTSTART;VALUE=DATE`, `X-WR-CALNAME`, display `VALARM` for scheduled work), token store (256-bit base64url, issue/rotate/revoke/lookup with constant-time compare), and a per-IP fixed-window limiter (60 requests/min). Events reuse G2's `MaintenanceDesired` mapping (🔧/✅ titles, deep links), so the feed matches the Google calendar. Routes: `GET/POST/DELETE /api/v1/x/calendar/feed` (authenticated: status, create-or-rotate returning the URL once, revoke) and `GET /api/v1/x/calendar/{token}.ics` (no auth middleware). Unknown, malformed, huge and revoked tokens all get the same bare 404. UI: an "ICS feed" card on `/x/calendar` (shown whether or not Google is configured; copy, rotate, revoke). Project steps are not in the feed (G3 adds them to the Google provider; add them here too if wanted).
+- Checks run locally: BE + BE-PG (custom + `TestCustom*`), FE lint and typecheck, SEAM. Not in a real browser.
+- **Owner step:** add a Cloudflare Access **bypass** policy for the path `/api/v1/x/calendar/*` **only**. Calendar apps can't log in, so without it the subscription URL is blocked. The rest of the site stays behind Access. The feed is protected by the unguessable token, rate limiting and revocation instead.
+- **Rate limiting behind the tunnel (assumption):** upstream omits RealIP, so the limiter keys on the socket peer, and trusts `CF-Connecting-IP` **only** when that peer is loopback/private, which is the deployed setup (cloudflared on the Docker/LAN network). A public peer can't choose its own bucket. If cloudflared ever connects from a public address, every caller shares one bucket. Client IPs are normalised (IPv4-mapped IPv6 unmapped, IPv6 keyed by /64) and the limiter tracks at most 10,000 keys: when full it reclaims expired buckets, otherwise new keys get 429.
+- **Review hardening:**
+  - **Ownership:** only group **owners** can create, rotate or revoke the feed (403 otherwise, and fail-closed if the group adapter isn't wired). Any member can read `GET /calendar/feed` status, which never contains the token.
+  - **Bounds:** the feed holds at most 5,000 events, newest first; completed entries only from the last 365 days, scheduled (not completed) ones up to 2 years ahead, with overdue ones kept. The bounds run in SQL (`upstream/maintenance_feed.go`). The response carries a content `ETag` and honours `If-None-Match` with 304.
+  - **Orphans:** a token whose group no longer exists is a 404, and its row is deleted on first use. The daily `x-ics-sweep` task (`ics.Store.SweepOrphans`, next to `x-gcal-sweep` in `x_register.go`) removes the rest.
+  - **Headers:** `Cache-Control: no-store`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer` are set on every response of the feed route (200, 304, 404, 429, 500) and on the create/rotate response, which contains the secret URL.
+- **Known and accepted:** the token is in the URL path, so upstream's request logger (`internal/web/mid/logger.go` logs `r.URL.Path`) writes it to the logs. The remedy is to rotate the token; a future seam could redact it.
+- Migration `00004` is new: back up Postgres before deploying.
 
 ---
 

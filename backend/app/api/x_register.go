@@ -20,6 +20,7 @@ import (
 	xconfig "github.com/sysadminsmedia/homebox/backend/internal/custom/config"
 	xent "github.com/sysadminsmedia/homebox/backend/internal/custom/ent"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/gcal"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/ics"
 	xmigrations "github.com/sysadminsmedia/homebox/backend/internal/custom/migrations"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/projects"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/upstream"
@@ -70,6 +71,13 @@ func registerCustom(a *app, cfg *config.Config, router *chi.Mux, chain *errchain
 			log.Error().Err(err).Msg("custom gcal orphan sweep failed")
 		} else if n > 0 {
 			log.Info().Int("removed", n).Msg("custom gcal orphan connections removed")
+		}
+	}))
+	runner.AddPlugin(NewTask("x-ics-sweep", 24*time.Hour, func(ctx context.Context) {
+		if n, err := ics.NewStore(xc).SweepOrphans(ctx, upstream.NewGroups(a.db).ExistingIDs); err != nil {
+			log.Error().Err(err).Msg("custom ics orphan sweep failed")
+		} else if n > 0 {
+			log.Info().Int("removed", n).Msg("custom ics orphan feed tokens removed")
 		}
 	}))
 	return nil

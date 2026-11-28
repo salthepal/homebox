@@ -15,6 +15,7 @@ import (
 	xconfig "github.com/sysadminsmedia/homebox/backend/internal/custom/config"
 	xent "github.com/sysadminsmedia/homebox/backend/internal/custom/ent"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/gcal"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/ics"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/projects"
 )
 
@@ -28,6 +29,15 @@ type Deps struct {
 	Projects *projects.Service // Feature 1 (P2)
 	// GcalReconciler serves "Sync now" (POST /gcal/sync); nil means sync isn't wired.
 	GcalReconciler *gcal.Reconciler
+
+	// IcsFeed reads upstream maintenance entries (bounded) for the ICS feed.
+	IcsFeed IcsFeedSource
+	// IcsGroups checks group ownership and existence for the ICS feed.
+	IcsGroups IcsGroups
+	// IcsLimiter overrides the feed's per-IP rate limiter (tests); nil = default.
+	IcsLimiter *ics.Limiter
+	// IcsFeedLimit overrides the feed's event cap (tests); 0 = default (5000).
+	IcsFeedLimit int
 }
 
 // Mount registers the custom routes on r. userMW is upstream's authenticated-user
@@ -36,6 +46,7 @@ func Mount(r chi.Router, chain *errchain.ErrChain, userMW []errchain.Middleware,
 	r.Get("/ping", chain.ToHandlerFunc(handlePing(d), userMW...))
 	mountGcal(r, chain, userMW, d)
 	mountProjects(r, chain, userMW, d)
+	mountICS(r, chain, userMW, d)
 }
 
 // PingResponse proves the custom stack end to end: routing, auth, tenant and custom DB.

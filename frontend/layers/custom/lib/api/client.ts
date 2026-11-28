@@ -52,6 +52,16 @@ export type XGcalSyncResult = {
   error?: string;
 };
 
+// ---- ICS feed (G4) ----
+export type XIcsStatus = {
+  exists: boolean;
+  created_at: string | null;
+  rotated_at: string | null;
+};
+
+/** Returned once when a feed token is created or rotated; `url` contains the secret token. */
+export type XIcsIssued = XIcsStatus & { url: string };
+
 /** Error body shape of the custom API (same as upstream's). */
 export type XError = { error?: string };
 
@@ -219,6 +229,21 @@ export class CustomApi extends BaseAPI {
   /** "Sync now": reconcile this group's calendar immediately. */
   gcalSync() {
     return this.http.post<undefined, XGcalSyncResult & XError>({ url: route("/x/gcal/sync") });
+  }
+
+  // ---- ICS feed (G4) ----
+  icsStatus() {
+    return this.http.get<XIcsStatus>({ url: route("/x/calendar/feed") });
+  }
+
+  /** Creates the feed token, or rotates it (the old URL stops working). Group owners only. */
+  icsIssue() {
+    return this.http.post<undefined, XIcsIssued & XError>({ url: route("/x/calendar/feed") });
+  }
+
+  /** Revokes the feed token. Group owners only. */
+  icsRevoke() {
+    return this.http.delete<void>({ url: route("/x/calendar/feed") });
   }
 }
 

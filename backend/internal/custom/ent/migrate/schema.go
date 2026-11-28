@@ -60,6 +60,20 @@ var (
 			},
 		},
 	}
+	// XIcsFeedsColumns holds the columns for the "x_ics_feeds" table.
+	XIcsFeedsColumns = []*schema.Column{
+		{Name: "group_id", Type: field.TypeUUID},
+		{Name: "token_hash", Type: field.TypeString, Unique: true},
+		{Name: "created_by", Type: field.TypeUUID},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "rotated_at", Type: field.TypeTime, Nullable: true},
+	}
+	// XIcsFeedsTable holds the schema information for the "x_ics_feeds" table.
+	XIcsFeedsTable = &schema.Table{
+		Name:       "x_ics_feeds",
+		Columns:    XIcsFeedsColumns,
+		PrimaryKey: []*schema.Column{XIcsFeedsColumns[0]},
+	}
 	// XMetaColumns holds the columns for the "x_meta" table.
 	XMetaColumns = []*schema.Column{
 		{Name: "key", Type: field.TypeString},
@@ -148,6 +162,7 @@ var (
 	Tables = []*schema.Table{
 		XGcalConnectionsTable,
 		XGcalLinksTable,
+		XIcsFeedsTable,
 		XMetaTable,
 		XProjectsTable,
 		XProjectStepsTable,
@@ -160,6 +175,9 @@ func init() {
 	}
 	XGcalLinksTable.Annotation = &entsql.Annotation{
 		Table: "x_gcal_links",
+	}
+	XIcsFeedsTable.Annotation = &entsql.Annotation{
+		Table: "x_ics_feeds",
 	}
 	XMetaTable.Annotation = &entsql.Annotation{
 		Table: "x_meta",

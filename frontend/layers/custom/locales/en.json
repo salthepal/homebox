@@ -187,7 +187,27 @@
       "toast_state": "The connection link expired. Try connecting again.",
       "toast_membership": "You're no longer a member of this group, so Google Calendar wasn't connected",
       "toast_failed": "Couldn't finish connecting to Google",
-      "load_failed": "Couldn't load calendar status"
+      "load_failed": "Couldn't load calendar status",
+      "feed_title": "Calendar feed (ICS)",
+      "feed_intro": "A private, read-only link you can subscribe to from Apple Calendar, Outlook or any calendar app. Anyone with the link can see your maintenance schedule.",
+      "feed_none": "No feed link yet.",
+      "feed_active": "Feed link active since {when}. The link is only shown when it is created.",
+      "feed_create": "Create feed link",
+      "feed_rotate": "Rotate link",
+      "feed_revoke": "Revoke link",
+      "feed_url_once": "Copy this link now. For your security it won't be shown again.",
+      "feed_copy": "Copy",
+      "feed_copied": "Link copied",
+      "feed_copy_failed": "Couldn't copy. Select the link and copy it manually.",
+      "feed_created": "Feed link created",
+      "feed_rotated": "Feed link rotated. The old link no longer works.",
+      "feed_revoked": "Feed link revoked",
+      "feed_failed": "Couldn't update the feed link. Only group owners can create, rotate or revoke it.",
+      "feed_load_failed": "Couldn't load feed status",
+      "feed_rotate_title": "Rotate the feed link?",
+      "feed_rotate_body": "A new link replaces the old one. Calendars subscribed to the old link stop updating until you re-subscribe.",
+      "feed_revoke_title": "Revoke the feed link?",
+      "feed_revoke_body": "The link stops working immediately. You can create a new one later."
     }
   }
 }
