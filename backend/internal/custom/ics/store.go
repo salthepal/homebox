@@ -95,10 +95,29 @@ func (s *Store) GroupIDs(ctx context.Context) ([]uuid.UUID, error) {
 	return s.ent.XIcsFeed.Query().IDs(ctx)
 }
 
+// SweepOrphans removes the feed rows of groups that no longer exist and returns how many
+// were removed. existing returns the subset of the given IDs that are live groups (upstream
+// tables can't cascade into ours, R4). Run daily by the custom orphan sweep.
+func (s *Store) SweepOrphans(ctx context.Context, existing func(context.Context, []uuid.UUID) (map[uuid.UUID]struct{}, error)) (int, error) {
+	ids, err := s.GroupIDs(ctx)
+	if err != nil || len(ids) == 0 {
+		return 0, err
+	}
+	alive, err := existing(ctx, ids)
+	if err != nil {
+		return 0, err
+	}
+	var dead []uuid.UUID
+	for _, id := range ids {
+		if _, ok := alive[id]; !ok {
+			dead = append(dead, id)
+		}
+	}
+	return s.DeleteForGroups(ctx, dead)
+}
+
 // DeleteForGroups deletes the feed rows of the given groups and returns how many were
-// removed. The orphan sweep calls it with the IDs of groups that no longer exist (upstream
-// tables can't cascade into ours, R4). TODO(wire): register it in the daily sweep once a
-// sweep task exists on this branch's base.
+// removed.
 func (s *Store) DeleteForGroups(ctx context.Context, ids []uuid.UUID) (int, error) {
 	if len(ids) == 0 {
 		return 0, nil

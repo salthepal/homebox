@@ -5,8 +5,10 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/go-chi/chi/v5"
@@ -17,7 +19,11 @@ import (
 	xapi "github.com/sysadminsmedia/homebox/backend/internal/custom/api"
 	xconfig "github.com/sysadminsmedia/homebox/backend/internal/custom/config"
 	xent "github.com/sysadminsmedia/homebox/backend/internal/custom/ent"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/gcal"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/ics"
 	xmigrations "github.com/sysadminsmedia/homebox/backend/internal/custom/migrations"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/projects"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/upstream"
 	"github.com/sysadminsmedia/homebox/backend/internal/data/ent/authroles"
 	"github.com/sysadminsmedia/homebox/backend/internal/sys/config"
 )
@@ -44,7 +50,8 @@ func registerCustom(a *app, cfg *config.Config, router *chi.Mux, chain *errchain
 	log.Info().Ints64("applied", applied).Msg("custom migrations up to date")
 
 	xc := xent.NewClient(xent.Driver(entsql.OpenDB(dialect, db)))
-	deps := xapi.Deps{Ent: xc, Config: xcfg}
+	gcalOpts := gcalOptions(a)
+	deps := xapi.Deps{Ent: xc, Config: xcfg, Gcal: gcalOpts, Projects: newProjectsService(a, xc, db, dialect)}
 	registerCustomGcal(a, xcfg, xc, runner, &deps)
 	mountCustomRoutes(a, router, chain, deps)
 
@@ -52,8 +59,43 @@ func registerCustom(a *app, cfg *config.Config, router *chi.Mux, chain *errchain
 		log.Info().Strs("missing", missing).Msg("google calendar sync disabled")
 	}
 
-	_ = runner // custom background tasks are registered here in later tasks
+	// Orphan sweeper: upstream deletes bypass custom tables and there are no FKs (R4).
+	runner.AddPlugin(NewTask("x-projects-sweep", 24*time.Hour, func(ctx context.Context) {
+		if err := deps.Projects.SweepOrphans(ctx); err != nil {
+			log.Error().Err(err).Msg("custom projects orphan sweep failed")
+		}
+	}))
+	gsvc := gcal.New(xc, xcfg, gcalOpts)
+	runner.AddPlugin(NewTask("x-gcal-sweep", 24*time.Hour, func(ctx context.Context) {
+		if n, err := gsvc.SweepOrphans(ctx); err != nil {
+			log.Error().Err(err).Msg("custom gcal orphan sweep failed")
+		} else if n > 0 {
+			log.Info().Int("removed", n).Msg("custom gcal orphan connections removed")
+		}
+	}))
+	runner.AddPlugin(NewTask("x-ics-sweep", 24*time.Hour, func(ctx context.Context) {
+		if n, err := ics.NewStore(xc).SweepOrphans(ctx, upstream.NewGroups(a.db).ExistingIDs); err != nil {
+			log.Error().Err(err).Msg("custom ics orphan sweep failed")
+		} else if n > 0 {
+			log.Info().Int("removed", n).Msg("custom ics orphan feed tokens removed")
+		}
+	}))
 	return nil
+}
+
+// gcalOptions wires the upstream group adapter into the gcal service (R10).
+func gcalOptions(a *app) gcal.Options {
+	g := upstream.NewGroups(a.db)
+	return gcal.Options{IsMember: g.IsMember, GroupsExist: g.ExistingIDs}
+}
+
+// newProjectsService wires the Projects service onto upstream via the adapters (R10).
+func newProjectsService(a *app, xc *xent.Client, db *sql.DB, dialect string) *projects.Service {
+	return projects.NewService(
+		projects.NewRepo(xc, db, dialect),
+		upstream.NewEntities(a.db),
+		upstream.NewMaintenance(a.db, a.repos.MaintEntry),
+	)
 }
 
 // mountCustomRoutes mounts /api/v1/x with upstream's authenticated-user middleware.

@@ -150,12 +150,14 @@ type runState struct {
 	links   map[linkKey]Link
 	remote  map[string]Event // our events on the calendar by event ID
 	byKey   map[linkKey]Event
+	// deleted holds the IDs of events this run already removed from the calendar.
+	deleted map[string]struct{}
 	// firstErr is the first per-event failure; one bad entry doesn't block the rest.
 	firstErr error
 }
 
 func (r *Reconciler) run(ctx context.Context, gid uuid.UUID, c *Client, conn Connection, res *Result) error {
-	st := &runState{gid: gid, c: c, conn: conn, res: res, now: r.opt.Now()}
+	st := &runState{gid: gid, c: c, conn: conn, res: res, now: r.opt.Now(), deleted: map[string]struct{}{}}
 	if err := r.loadDesired(ctx, st); err != nil {
 		return err
 	}
@@ -169,6 +171,9 @@ func (r *Reconciler) run(ctx context.Context, gid uuid.UUID, c *Client, conn Con
 		return err
 	}
 	if err := r.applyDeletes(ctx, st); err != nil {
+		return err
+	}
+	if err := r.applyDuplicates(ctx, st); err != nil {
 		return err
 	}
 	return st.firstErr
@@ -332,11 +337,61 @@ func (r *Reconciler) applyDeletes(ctx context.Context, st *runState) error {
 				}
 				continue // keep the link so the next run retries
 			}
+			st.deleted[l.EventID] = struct{}{}
 			st.res.Deleted++
 		}
 		if err := r.svc.store.DeleteLink(ctx, st.gid, k.typ, k.id); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// applyDuplicates deletes owned events that no link points at (step 7): extra copies of a
+// source left by an interrupted run or a lost links table, and copies whose source has since
+// been deleted. Only events that carry our marker, parse to a source key of a type a
+// provider manages, and are not the linked event for their key are removed; everything else
+// on the calendar, including owned-looking events we can't attribute to a source, is left
+// alone.
+func (r *Reconciler) applyDuplicates(ctx context.Context, st *runState) error {
+	links, err := r.svc.store.ListLinks(ctx, st.gid)
+	if err != nil {
+		return err
+	}
+	linked := make(map[string]struct{}, len(links))
+	for _, l := range links {
+		linked[l.EventID] = struct{}{}
+	}
+	ids := make([]string, 0, len(st.remote))
+	for id := range st.remote {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		if _, gone := st.deleted[id]; gone {
+			continue
+		}
+		if _, ok := linked[id]; ok {
+			continue
+		}
+		k, ok := keyOf(st.remote[id])
+		if !ok {
+			continue
+		}
+		if _, managedType := st.managed[k.typ]; !managedType {
+			continue
+		}
+		if err := st.c.DeleteEvent(ctx, st.conn.CalendarID, id); err != nil {
+			if IsNotFound(err) {
+				continue
+			}
+			if stop := r.soft(ctx, st, err); stop != nil {
+				return stop
+			}
+			continue
+		}
+		st.deleted[id] = struct{}{}
+		st.res.Deleted++
 	}
 	return nil
 }

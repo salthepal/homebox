@@ -79,8 +79,10 @@ func (r *MaintenanceReader) ListForGroup(ctx context.Context, gid uuid.UUID) ([]
 
 // OnMaintenanceChange registers a runtime ent hook (no codegen) that calls notify with the
 // group ID of every maintenance entry that is created, updated or deleted through db. It
-// runs after the mutation succeeds. Deletions that cascade from an item's deletion happen in
-// the database and never reach hooks; the periodic reconciler covers those.
+// runs after the mutation succeeds; when the mutation is part of an ent transaction, notify
+// is deferred until the transaction commits (and never called if it rolls back). Deletions
+// that cascade from an item's deletion happen in the database and never reach hooks; the
+// periodic reconciler covers those.
 //
 // The group is resolved with the mutation's own client, so inside a transaction the lookup
 // uses the same connection (a second connection would deadlock single-connection SQLite).
@@ -98,25 +100,54 @@ func OnMaintenanceChange(db *ent.Client, notify func(gid uuid.UUID)) {
 			if err != nil {
 				return v, err
 			}
-			seen := map[uuid.UUID]struct{}{}
-			emit := func(gids []uuid.UUID) {
-				for _, g := range gids {
-					if _, dup := seen[g]; !dup {
-						seen[g] = struct{}{}
-						notify(g)
-					}
-				}
-			}
-			emit(before)
+			affected := before
 			if m.Op().Is(ent.OpCreate) {
 				if id, ok := m.ID(); ok {
 					gids, _ := groupsOfEntries(ctx, m.Client(), []uuid.UUID{id})
-					emit(gids)
+					affected = append(affected, gids...)
 				}
 			}
+			affected = uniqueUUIDs(affected)
+			if len(affected) == 0 {
+				return v, nil
+			}
+			fire := func() {
+				for _, g := range affected {
+					notify(g)
+				}
+			}
+
+			// Inside a transaction the change isn't visible to other connections until it
+			// commits, so a debounced reconcile that ran earlier would read the old state.
+			// Defer to commit, and say nothing on rollback.
+			if tx, terr := m.Tx(); terr == nil {
+				tx.OnCommit(func(next ent.Committer) ent.Committer {
+					return ent.CommitFunc(func(ctx context.Context, tx *ent.Tx) error {
+						if err := next.Commit(ctx, tx); err != nil {
+							return err
+						}
+						fire()
+						return nil
+					})
+				})
+				return v, nil
+			}
+			fire()
 			return v, nil
 		})
 	})
+}
+
+func uniqueUUIDs(in []uuid.UUID) []uuid.UUID {
+	seen := make(map[uuid.UUID]struct{}, len(in))
+	out := make([]uuid.UUID, 0, len(in))
+	for _, id := range in {
+		if _, dup := seen[id]; !dup {
+			seen[id] = struct{}{}
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 func groupsOfEntries(ctx context.Context, c *ent.Client, ids []uuid.UUID) ([]uuid.UUID, error) {

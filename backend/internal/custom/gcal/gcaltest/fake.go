@@ -4,6 +4,7 @@
 package gcaltest
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/google/uuid"
 
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/gcal"
 )
@@ -41,6 +44,8 @@ type Fake struct {
 	// FailNext makes the next N API (not token) requests return FailStatus.
 	FailNext   int
 	FailStatus int
+	// Gone lists calendar IDs whose events endpoints return 404 (deleted or inaccessible).
+	Gone map[string]bool
 	// Requests logs "METHOD path" for every API request, in order.
 	Requests []string
 
@@ -75,6 +80,15 @@ func (f *Fake) Options() gcal.Options {
 		TokenURL:  f.Server.URL + "/token",
 		RevokeURL: f.Server.URL + "/revoke",
 		APIBase:   f.Server.URL + "/calendar",
+		// Permissive defaults; tests that exercise membership or sweeping override these.
+		IsMember: func(context.Context, uuid.UUID, uuid.UUID) (bool, error) { return true, nil },
+		GroupsExist: func(_ context.Context, ids []uuid.UUID) (map[uuid.UUID]struct{}, error) {
+			m := make(map[uuid.UUID]struct{}, len(ids))
+			for _, id := range ids {
+				m[id] = struct{}{}
+			}
+			return m, nil
+		},
 	}
 }
 
@@ -194,6 +208,10 @@ func (f *Fake) api(w http.ResponseWriter, r *http.Request) {
 		gerr(w, http.StatusNotFound, "notFound", "not found")
 		return
 	}
+	if f.Gone[calID] {
+		gerr(w, http.StatusNotFound, "notFound", "Not Found")
+		return
+	}
 	if f.Events[calID] == nil {
 		f.Events[calID] = map[string]gcal.Event{}
 	}
@@ -238,35 +256,45 @@ func (f *Fake) api(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodPatch:
-		var patch gcal.Event
+		// Real patch semantics: only the keys present in the body change. Objects merge
+		// recursively and arrays are replaced wholesale, so a client that omits a field
+		// (e.g. an empty description or reminder overrides) leaves the old value in place.
+		var patch map[string]any
 		if json.NewDecoder(r.Body).Decode(&patch) != nil {
 			gerr(w, http.StatusBadRequest, "invalid", "bad body")
 			return
 		}
-		if patch.Summary != "" {
-			cur.Summary = patch.Summary
+		raw, _ := json.Marshal(cur)
+		var merged map[string]any
+		_ = json.Unmarshal(raw, &merged)
+		mergePatch(merged, patch)
+		raw, _ = json.Marshal(merged)
+		var next gcal.Event
+		if json.Unmarshal(raw, &next) != nil {
+			gerr(w, http.StatusBadRequest, "invalid", "bad body")
+			return
 		}
-		if patch.Description != "" {
-			cur.Description = patch.Description
-		}
-		if patch.Start != nil {
-			cur.Start = patch.Start
-		}
-		if patch.End != nil {
-			cur.End = patch.End
-		}
-		if patch.Reminders != nil {
-			cur.Reminders = patch.Reminders
-		}
-		if patch.ExtendedProperties != nil {
-			cur.ExtendedProperties = patch.ExtendedProperties
-		}
-		evs[eid] = cur
-		writeJSON(w, http.StatusOK, cur)
+		next.ID = cur.ID
+		evs[eid] = next
+		writeJSON(w, http.StatusOK, next)
 	case http.MethodDelete:
 		delete(evs, eid)
 		w.WriteHeader(http.StatusNoContent)
 	default:
 		gerr(w, http.StatusMethodNotAllowed, "invalid", "method")
+	}
+}
+
+// mergePatch applies Google-style patch semantics: keys in src overwrite keys in dst, nested
+// objects merge recursively, everything else (including arrays) is replaced.
+func mergePatch(dst, src map[string]any) {
+	for k, v := range src {
+		sv, srcIsObj := v.(map[string]any)
+		dv, dstIsObj := dst[k].(map[string]any)
+		if srcIsObj && dstIsObj {
+			mergePatch(dv, sv)
+			continue
+		}
+		dst[k] = v
 	}
 }

@@ -5,22 +5,13 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/sysadminsmedia/homebox/backend/internal/data/ent"
 	"github.com/sysadminsmedia/homebox/backend/internal/data/ent/group"
 	"github.com/sysadminsmedia/homebox/backend/internal/data/ent/usergroup"
 )
 
-// Groups answers group questions the ICS feed needs: who may manage it, and whether the
-// group a token belongs to still exists.
-type Groups struct {
-	db *ent.Client
-}
-
-// NewGroups wraps upstream's ent client.
-func NewGroups(db *ent.Client) *Groups { return &Groups{db: db} }
-
 // IsOwner reports whether the user is an owner of the group. It mirrors upstream's
-// GroupRepository.IsOwnerOf, the authoritative per-group ownership check.
+// GroupRepository.IsOwnerOf, the authoritative per-group ownership check. The ICS feed uses it
+// to restrict creating, rotating and revoking the feed link to owners.
 func (g *Groups) IsOwner(ctx context.Context, gid, uid uuid.UUID) (bool, error) {
 	return g.db.UserGroup.Query().
 		Where(

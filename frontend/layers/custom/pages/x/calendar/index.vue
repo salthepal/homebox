@@ -87,7 +87,13 @@
 
   async function loadCalendars() {
     calendarsFailed.value = false;
-    const resp = await api.gcalCalendars();
+    let resp;
+    try {
+      resp = await api.gcalCalendars();
+    } catch {
+      calendarsFailed.value = true;
+      return;
+    }
     if (resp.error) {
       calendarsFailed.value = true;
       // A dead token flips the status to broken: refresh so the Reconnect banner shows.
@@ -100,7 +106,13 @@
   }
 
   async function loadStatus(withCalendars = true) {
-    const resp = await api.gcalStatus();
+    let resp;
+    try {
+      resp = await api.gcalStatus();
+    } catch {
+      loadFailed.value = true;
+      return;
+    }
     if (resp.error) {
       loadFailed.value = true;
       return;
@@ -114,7 +126,14 @@
 
   async function connect() {
     connecting.value = true;
-    const resp = await api.gcalConnect();
+    let resp;
+    try {
+      resp = await api.gcalConnect();
+    } catch {
+      connecting.value = false;
+      toast.error(t("x.calendar.toast_failed"));
+      return;
+    }
     if (resp.error || !resp.data.url) {
       connecting.value = false;
       toast.error(resp.data?.error ?? t("x.calendar.toast_failed"));
@@ -134,8 +153,15 @@
     if (calendarId.value) {
       body.calendar_id = calendarId.value;
     }
-    const resp = await api.gcalSaveSettings(body);
-    saving.value = false;
+    let resp;
+    try {
+      resp = await api.gcalSaveSettings(body);
+    } catch {
+      toast.error(t("x.calendar.save_failed"));
+      return;
+    } finally {
+      saving.value = false;
+    }
     if (resp.error) {
       toast.error(resp.data?.error ?? t("x.calendar.save_failed"));
       return;
@@ -149,6 +175,20 @@
     const resp = await api.gcalSync();
     syncing.value = false;
     if (resp.error) {
+      const partial = resp.data?.result;
+      if (partial && resp.data.status) {
+        // Some entries synced and others failed: say what was done and what went wrong.
+        toast.warning(
+          t("x.calendar.synced_partial", {
+            added: partial.inserted,
+            updated: partial.patched,
+            removed: partial.deleted,
+            error: resp.data.error ?? t("x.calendar.sync_failed"),
+          })
+        );
+        status.value = resp.data.status;
+        return;
+      }
       toast.error(resp.data?.error ?? t("x.calendar.sync_failed"));
       // A failed or broken sync is recorded server-side: refresh to show last error / Reconnect.
       await loadStatus(false);
@@ -165,9 +205,16 @@
 
   async function disconnect() {
     disconnecting.value = true;
-    const resp = await api.gcalDisconnect(removeEvents.value);
-    disconnecting.value = false;
-    disconnectOpen.value = false;
+    let resp;
+    try {
+      resp = await api.gcalDisconnect(removeEvents.value);
+    } catch {
+      toast.error(t("x.calendar.disconnect_failed"));
+      return;
+    } finally {
+      disconnecting.value = false;
+      disconnectOpen.value = false;
+    }
     if (resp.error) {
       toast.error(resp.data?.error ?? t("x.calendar.disconnect_failed"));
       return;
@@ -194,6 +241,8 @@
       toast.error(t("x.calendar.toast_denied"));
     } else if (error === "state") {
       toast.error(t("x.calendar.toast_state"));
+    } else if (error === "membership") {
+      toast.error(t("x.calendar.toast_membership"));
     } else {
       toast.error(t("x.calendar.toast_failed"));
     }
@@ -202,8 +251,11 @@
 
   onMounted(async () => {
     handleReturn();
-    await loadStatus();
-    loading.value = false;
+    try {
+      await loadStatus();
+    } finally {
+      loading.value = false;
+    }
   });
 </script>
 
@@ -221,7 +273,8 @@
         {{ t("x.calendar.load_failed") }}
       </p>
 
-      <!-- Not configured: say exactly which variables are missing. -->
+      <!-- Not configured: say exactly which variables are missing. A stored connection can
+           still be disconnected locally (credentials are removed without calling Google). -->
       <div
         v-else-if="status && !status.enabled"
         class="flex flex-col gap-3 rounded-md border p-4"
@@ -236,6 +289,16 @@
           <p class="text-sm text-muted-foreground">{{ t("x.calendar.redirect_uri_hint") }}</p>
           <code class="break-all rounded bg-muted p-2 text-sm">{{ status.redirect_uri }}</code>
         </template>
+        <div
+          v-if="status.connected"
+          class="flex flex-wrap items-center justify-between gap-2 border-t pt-3"
+          data-testid="x-gcal-stored-connection"
+        >
+          <p class="text-sm">{{ t("x.calendar.connected_as", { email: status.google_email || "—" }) }}</p>
+          <Button variant="outline" size="sm" data-testid="x-gcal-disconnect" @click="disconnectOpen = true">
+            {{ t("x.calendar.disconnect") }}
+          </Button>
+        </div>
       </div>
 
       <!-- Configured, not connected. -->

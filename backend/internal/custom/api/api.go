@@ -16,6 +16,7 @@ import (
 	xent "github.com/sysadminsmedia/homebox/backend/internal/custom/ent"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/gcal"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ics"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/projects"
 )
 
 // Deps are the dependencies shared by custom handlers.
@@ -25,6 +26,7 @@ type Deps struct {
 	// Gcal overrides Google endpoints (tests point these at a fake); zero = real Google.
 	Gcal gcal.Options
 
+	Projects *projects.Service // Feature 1 (P2)
 	// GcalReconciler serves "Sync now" (POST /gcal/sync); nil means sync isn't wired.
 	GcalReconciler *gcal.Reconciler
 
@@ -43,6 +45,7 @@ type Deps struct {
 func Mount(r chi.Router, chain *errchain.ErrChain, userMW []errchain.Middleware, d Deps) {
 	r.Get("/ping", chain.ToHandlerFunc(handlePing(d), userMW...))
 	mountGcal(r, chain, userMW, d)
+	mountProjects(r, chain, userMW, d)
 	mountICS(r, chain, userMW, d)
 }
 

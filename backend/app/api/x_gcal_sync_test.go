@@ -3,8 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"io"
 	"net/http"
 	"sort"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -38,16 +41,26 @@ type syncEnv struct {
 // hook, the reconciler queue goroutine and the HTTP routes, against a fake Google.
 func newSyncEnv(t *testing.T) syncEnv {
 	t.Helper()
+	return newSyncEnvWith(t, 40*time.Millisecond, nil)
+}
+
+// newSyncEnvWith is newSyncEnv with a custom debounce (an hour keeps the background queue
+// out of a test that drives Sync now by hand) and a hook to adjust the Google options.
+func newSyncEnvWith(t *testing.T, debounce time.Duration, tweak func(*gcal.Options)) syncEnv {
+	t.Helper()
 	a, token, gid, deps := newCustomTestApp(t)
 	fake := gcaltest.New(t)
 	xcfg := xconfig.Config{
-		PublicBaseURL: gcalTestBaseURL, GoogleClientID: "id", GoogleClientSecret: "secret",
+		PublicBaseURL: gcalTestBaseURL, GoogleClientID: "id", GoogleClientSecret: gcalTestSecret,
 		SecretKey: bytes.Repeat([]byte{3}, 32), GcalSyncInterval: 15 * time.Minute,
 	}
 	opts := fake.Options()
 	opts.Backoff = time.Millisecond
+	if tweak != nil {
+		tweak(&opts)
+	}
 
-	rec := newGcalReconciler(a, xcfg, deps.Ent, opts, gcal.ReconcilerOptions{Debounce: 40 * time.Millisecond})
+	rec := newGcalReconciler(a, xcfg, deps.Ent, opts, gcal.ReconcilerOptions{Debounce: debounce})
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { _ = rec.Run(ctx); close(done) }()
@@ -222,7 +235,7 @@ func chiWithReconciler(t *testing.T, g *gcalAPI) chi.Router {
 	a, token, _, deps := newCustomTestApp(t)
 	g.token = token
 	xcfg := xconfig.Config{
-		PublicBaseURL: gcalTestBaseURL, GoogleClientID: "id", GoogleClientSecret: "secret",
+		PublicBaseURL: gcalTestBaseURL, GoogleClientID: "id", GoogleClientSecret: gcalTestSecret,
 		SecretKey: bytes.Repeat([]byte{3}, 32), GcalSyncInterval: time.Minute,
 	}
 	deps.Config, deps.Gcal = xcfg, g.fake.Options()
@@ -230,4 +243,63 @@ func chiWithReconciler(t *testing.T, g *gcalAPI) chi.Router {
 	r := chi.NewRouter()
 	mountCustomRoutes(a, r, errchain.New(mid.Errors(zerolog.Nop())), deps)
 	return r
+}
+
+// failFirstInsert answers the first events.insert with a 400, like Google rejecting one
+// bad entry, and passes everything else through.
+type failFirstInsert struct {
+	base  http.RoundTripper
+	fired atomic.Bool
+}
+
+func (f *failFirstInsert) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.Method == http.MethodPost && strings.HasSuffix(req.URL.Path, "/events") && f.fired.CompareAndSwap(false, true) {
+		return &http.Response{
+			StatusCode: http.StatusBadRequest, Status: "400 Bad Request", Request: req,
+			Header: http.Header{"Content-Type": {"application/json"}},
+			Body: io.NopCloser(strings.NewReader(
+				`{"error":{"code":400,"message":"bad event","errors":[{"reason":"invalid"}]}}`)),
+		}, nil
+	}
+	return f.base.RoundTrip(req)
+}
+
+// When some entries sync and one fails, Sync now still reports what was done: the error status
+// carries the result, the refreshed status and the message.
+func TestCustomGcalSyncNowReportsPartialResult(t *testing.T) {
+	tr := &failFirstInsert{base: http.DefaultTransport}
+	s := newSyncEnvWith(t, time.Hour, func(o *gcal.Options) { o.HTTPClient = &http.Client{Transport: tr} })
+	ctx := context.Background()
+	for _, name := range []string{"Furnace", "Boiler"} {
+		itemID := s.newItem(t, name)
+		_, err := s.a.repos.MaintEntry.Create(ctx, s.gid, itemID, repo.MaintenanceEntryCreate{
+			Name: "Replace filter", ScheduledDate: types.DateFromTime(time.Date(2027, 6, 1, 0, 0, 0, 0, time.UTC)),
+		})
+		require.NoError(t, err)
+	}
+
+	g := &gcalAPI{t: t, r: s.r, token: s.token, fake: s.fake}
+	rec := g.do(http.MethodPost, "/api/v1/x/gcal/sync", nil, true)
+	require.Equal(t, http.StatusBadGateway, rec.Code, rec.Body.String())
+	body := decodeBody[struct {
+		Result gcal.Result `json:"result"`
+		Status gcal.Status `json:"status"`
+		Error  string      `json:"error"`
+	}](t, rec)
+	assert.Equal(t, 1, body.Result.Inserted, "the entry that did sync is reported")
+	assert.Contains(t, body.Error, "bad event")
+	assert.Contains(t, body.Status.LastError, "bad event")
+	assert.NotEmpty(t, s.events(), "and it is really on the calendar")
+	assert.Len(t, s.events(), 1)
+
+	// A second press retries what failed and succeeds.
+	rec = g.do(http.MethodPost, "/api/v1/x/gcal/sync", nil, true)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	ok := decodeBody[struct {
+		Result gcal.Result `json:"result"`
+		Error  string      `json:"error"`
+	}](t, rec)
+	assert.Equal(t, 1, ok.Result.Inserted)
+	assert.Empty(t, ok.Error)
+	assert.Len(t, s.events(), 2)
 }
