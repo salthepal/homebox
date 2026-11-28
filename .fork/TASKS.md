@@ -76,6 +76,13 @@ Tables from PLAN §6 as `00002_x_projects.sql` (postgres + sqlite3), ent schemas
 
 **Status (2026-11-28):** done (stacked on P1). Adapters in `upstream/entities.go` (names, exists-in-group; bulk reads via upstream's ent client) and `upstream/maintenance.go` (create completed entry via upstream's repo, delete, exists-in-group). Service rules and the daily sweeper (`x-projects-sweep`, registered in `registerCustom`) are in `internal/custom/projects` (`service.go`, `sweep.go`). Handlers: `internal/custom/api/projects.go` (JSON is snake_case, dates `YYYY-MM-DD`; step/project bodies are full replaces; unknown fields are rejected). API tests are in `backend/app/api/x_projects_test.go` (`TestCustomProjects*`) and pass on SQLite and Postgres 16. Error mapping: other group's or missing ID → 404; validation, unknown item, bad IDs → 400; completing a done step → 409.
 
+**Review follow-up (x/p2-review-fixes):**
+- Completion claims the step atomically (`Repo.ClaimStep`, conditional `status <> done` update) before the maintenance entry is created; losers get 409. A failed entry/record step deletes the entry and reverts the claim (`ReleaseStep`).
+- Ordinary step create/update can't set `done` (400, points at `/complete`); editing a done step or leaving done still works.
+- Request bodies must be exactly one JSON value (trailing data → 400).
+- Auto-start uses `Repo.StartProject` (updates only status + started_at, only from idea/planning), inside the same transaction as the step insert/update, and only when a step moves INTO doing.
+- Project names and step titles are limited to 255 bytes (ent's `MaxLen` counts bytes; stricter than VARCHAR(255) characters) so users get 400 instead of 500. Costs and budget must be finite, >= 0, < 1e12, at most 2 decimals (rejected, not rounded), and are stored normalised. Both checks live in the repo (`validate.go`) so every caller is covered.
+
 ### [x] P3 · Projects UI
 Pages `/x/projects` and `/x/projects/[id]` per PLAN §6. Use existing shadcn components from `frontend/components/ui` (import them explicitly). Strings in the layer locale. Responsive.
 **Done when:** FE passes. Manual check: create a project, add, reorder and complete steps, link two items, and confirm progress and cost totals update. Screenshots in the PR.
