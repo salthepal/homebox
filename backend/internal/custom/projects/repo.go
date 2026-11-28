@@ -3,6 +3,7 @@ package projects
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -214,7 +215,7 @@ func (r *Repo) DeleteProject(ctx context.Context, gid, id uuid.UUID) error {
 
 func rollback(tx *xent.Tx, err error) error {
 	if rerr := tx.Rollback(); rerr != nil {
-		return fmt.Errorf("%w (rollback: %v)", err, rerr)
+		return errors.Join(err, fmt.Errorf("rollback: %w", rerr))
 	}
 	return err
 }
