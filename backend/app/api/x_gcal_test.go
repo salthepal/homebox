@@ -254,8 +254,9 @@ func TestCustomGcalSweepOrphansWithRealGroups(t *testing.T) {
 	require.NoError(t, err)
 	enc, err := gcal.Encrypt(cfg.SecretKey, []byte(gcaltest.RefreshToken))
 	require.NoError(t, err)
-	for _, gid := range []uuid.UUID{kept, doomed.ID} {
-		require.NoError(t, svc.Store().SaveConnection(ctx, gid, uuid.New(), "e@example.com", enc))
+	// Distinct accounts, so the doomed group's token is the last one for its account.
+	for gid, email := range map[uuid.UUID]string{kept: "kept@example.com", doomed.ID: "doomed@example.com"} {
+		require.NoError(t, svc.Store().SaveConnection(ctx, gid, uuid.New(), email, enc))
 		require.NoError(t, svc.Store().UpsertLink(ctx, gid, gcal.SourceMaintenance, uuid.New(), "ev", "h", time.Now()))
 	}
 	require.NoError(t, a.db.Group.DeleteOneID(doomed.ID).Exec(ctx))

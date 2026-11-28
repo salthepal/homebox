@@ -44,6 +44,8 @@ type Fake struct {
 	// FailNext makes the next N API (not token) requests return FailStatus.
 	FailNext   int
 	FailStatus int
+	// Gone lists calendar IDs whose events endpoints return 404 (deleted or inaccessible).
+	Gone map[string]bool
 	// Requests logs "METHOD path" for every API request, in order.
 	Requests []string
 
@@ -204,6 +206,10 @@ func (f *Fake) api(w http.ResponseWriter, r *http.Request) {
 	calID, err := url.PathUnescape(parts[0])
 	if err != nil || len(parts) < 2 || parts[1] != "events" {
 		gerr(w, http.StatusNotFound, "notFound", "not found")
+		return
+	}
+	if f.Gone[calID] {
+		gerr(w, http.StatusNotFound, "notFound", "Not Found")
 		return
 	}
 	if f.Events[calID] == nil {

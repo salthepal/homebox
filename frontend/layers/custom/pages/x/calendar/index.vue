@@ -85,7 +85,13 @@
 
   async function loadCalendars() {
     calendarsFailed.value = false;
-    const resp = await api.gcalCalendars();
+    let resp;
+    try {
+      resp = await api.gcalCalendars();
+    } catch {
+      calendarsFailed.value = true;
+      return;
+    }
     if (resp.error) {
       calendarsFailed.value = true;
       // A dead token flips the status to broken: refresh so the Reconnect banner shows.
@@ -98,7 +104,13 @@
   }
 
   async function loadStatus(withCalendars = true) {
-    const resp = await api.gcalStatus();
+    let resp;
+    try {
+      resp = await api.gcalStatus();
+    } catch {
+      loadFailed.value = true;
+      return;
+    }
     if (resp.error) {
       loadFailed.value = true;
       return;
@@ -112,7 +124,14 @@
 
   async function connect() {
     connecting.value = true;
-    const resp = await api.gcalConnect();
+    let resp;
+    try {
+      resp = await api.gcalConnect();
+    } catch {
+      connecting.value = false;
+      toast.error(t("x.calendar.toast_failed"));
+      return;
+    }
     if (resp.error || !resp.data.url) {
       connecting.value = false;
       toast.error(resp.data?.error ?? t("x.calendar.toast_failed"));
@@ -132,8 +151,15 @@
     if (calendarId.value) {
       body.calendar_id = calendarId.value;
     }
-    const resp = await api.gcalSaveSettings(body);
-    saving.value = false;
+    let resp;
+    try {
+      resp = await api.gcalSaveSettings(body);
+    } catch {
+      toast.error(t("x.calendar.save_failed"));
+      return;
+    } finally {
+      saving.value = false;
+    }
     if (resp.error) {
       toast.error(resp.data?.error ?? t("x.calendar.save_failed"));
       return;
@@ -144,9 +170,16 @@
 
   async function disconnect() {
     disconnecting.value = true;
-    const resp = await api.gcalDisconnect(removeEvents.value);
-    disconnecting.value = false;
-    disconnectOpen.value = false;
+    let resp;
+    try {
+      resp = await api.gcalDisconnect(removeEvents.value);
+    } catch {
+      toast.error(t("x.calendar.disconnect_failed"));
+      return;
+    } finally {
+      disconnecting.value = false;
+      disconnectOpen.value = false;
+    }
     if (resp.error) {
       toast.error(resp.data?.error ?? t("x.calendar.disconnect_failed"));
       return;
@@ -183,8 +216,11 @@
 
   onMounted(async () => {
     handleReturn();
-    await loadStatus();
-    loading.value = false;
+    try {
+      await loadStatus();
+    } finally {
+      loading.value = false;
+    }
   });
 </script>
 

@@ -353,7 +353,9 @@ func (s *Service) UpdateSettings(ctx context.Context, gid uuid.UUID, in Settings
 // switchCalendar prepares for moving the group to calendar id. If a different calendar was
 // chosen before, our events are removed from it (best effort: skipped when the connection
 // is broken or Google isn't configured) and the group's links are dropped so the next sync
-// starts clean. A removal error aborts the switch with nothing changed.
+// starts clean. A removal error aborts the switch with nothing changed, except that a
+// 404/410 means the old calendar is gone or inaccessible: there is nothing left to clean, so
+// the links are dropped and the switch proceeds.
 func (s *Service) switchCalendar(ctx context.Context, gid uuid.UUID, id string) error {
 	conn, err := s.store.GetConnection(ctx, gid)
 	if err != nil {
@@ -363,7 +365,7 @@ func (s *Service) switchCalendar(ctx context.Context, gid uuid.UUID, id string) 
 		return nil
 	}
 	if !conn.Broken && s.requireConfigured() == nil {
-		if _, err := s.removeOurEvents(ctx, gid, conn); err != nil {
+		if _, err := s.removeOurEvents(ctx, gid, conn); err != nil && !IsNotFound(err) {
 			return err
 		}
 	}
@@ -395,10 +397,10 @@ func (s *Service) SweepOrphans(ctx context.Context) (int, error) {
 		if _, ok := alive[c.GroupID]; ok {
 			continue
 		}
-		s.revoke(ctx, c)
 		if err := s.store.DeleteConnection(ctx, c.GroupID); err != nil {
 			return n, err
 		}
+		s.revokeIfLast(ctx, c)
 		n++
 	}
 	return n, nil
@@ -436,10 +438,10 @@ func (s *Service) Disconnect(ctx context.Context, gid uuid.UUID, removeEvents bo
 		}
 	}
 
-	s.revoke(ctx, conn)
 	if err := s.store.DeleteConnection(ctx, gid); err != nil {
 		return res, err
 	}
+	s.revokeIfLast(ctx, conn)
 	return res, nil
 }
 
@@ -473,6 +475,17 @@ func (s *Service) removeOurEvents(ctx context.Context, gid uuid.UUID, conn Conne
 		removed++
 	}
 	return removed, nil
+}
+
+// revokeIfLast revokes the token only when no other connection (of any group) uses the same
+// Google account: Google revokes the whole grant for the account and client, which would
+// break those other connections. Call it after the connection's row is deleted.
+func (s *Service) revokeIfLast(ctx context.Context, conn Connection) {
+	n, err := s.store.OtherConnectionsWithEmail(ctx, conn.GroupID, conn.GoogleEmail)
+	if err != nil || n > 0 {
+		return
+	}
+	s.revoke(ctx, conn)
 }
 
 // revoke asks Google to revoke the refresh token. Best effort: failures are ignored, since

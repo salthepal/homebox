@@ -258,3 +258,102 @@ func (e env) fakeIDs(cal string) []string {
 	}
 	return ids
 }
+
+const otherAccount = "other@example.com"
+
+func (e env) connectGroup(t *testing.T, gid, uid uuid.UUID) {
+	t.Helper()
+	u, err := e.svc.ConnectURL(uid, gid)
+	require.NoError(t, err)
+	_, err = e.svc.HandleCallback(context.Background(), gcaltest.Code, mustParse(t, u).Query().Get("state"))
+	require.NoError(t, err)
+}
+
+func TestXGcalReconnectAccountChange(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	e.connect(t)
+	hh := householdCal
+	require.NoError(t, e.svc.UpdateSettings(ctx, e.gid, gcal.SettingsInput{CalendarID: &hh}))
+	s := e.svc.Store()
+	require.NoError(t, s.UpsertLink(ctx, e.gid, gcal.SourceMaintenance, uuid.New(), "ev1", "h", time.Now()))
+
+	e.connect(t) // same account: a token refresh
+	st, err := e.svc.Status(ctx, e.gid)
+	require.NoError(t, err)
+	assert.Equal(t, householdCal, st.CalendarID, "same-account reconnect keeps the calendar")
+	links, _ := s.ListLinks(ctx, e.gid)
+	assert.Len(t, links, 1, "and the links")
+
+	e.fake.Set(func(f *gcaltest.Fake) { f.Calendars[0].ID = otherAccount })
+	e.connect(t)
+	st, err = e.svc.Status(ctx, e.gid)
+	require.NoError(t, err)
+	assert.Equal(t, otherAccount, st.GoogleEmail)
+	assert.Empty(t, st.CalendarID, "different account clears the calendar choice")
+	links, _ = s.ListLinks(ctx, e.gid)
+	assert.Empty(t, links, "and drops links so sources are inserted into the new calendar")
+}
+
+func TestXGcalRevokeOnlyForLastConnectionOfAccount(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	gid2, uid2 := uuid.New(), uuid.New()
+	e.connect(t)
+	e.connectGroup(t, gid2, uid2)
+
+	_, err := e.svc.Disconnect(ctx, e.gid, false)
+	require.NoError(t, err)
+	assert.Empty(t, e.fake.Revoked, "shared account: grant must not be revoked")
+	_, err = e.svc.Calendars(ctx, gid2)
+	require.NoError(t, err, "the other group stays usable")
+
+	_, err = e.svc.Disconnect(ctx, gid2, false)
+	require.NoError(t, err)
+	assert.Equal(t, gcaltest.RefreshToken, e.fake.Revoked, "last connection revokes")
+}
+
+func TestXGcalSweepRevokesOnlyForLastConnectionOfAccount(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	gid2, uid2 := uuid.New(), uuid.New()
+	e.connect(t)
+	e.connectGroup(t, gid2, uid2)
+
+	alive := map[uuid.UUID]struct{}{e.gid: {}}
+	opts := e.fake.Options()
+	opts.GroupsExist = func(context.Context, []uuid.UUID) (map[uuid.UUID]struct{}, error) { return alive, nil }
+	svc := gcal.New(e.ent, testConfig(), opts)
+
+	n, err := svc.SweepOrphans(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 1, n)
+	assert.Empty(t, e.fake.Revoked, "another group still uses the account")
+	_, err = svc.Calendars(ctx, e.gid)
+	require.NoError(t, err)
+
+	alive = map[uuid.UUID]struct{}{}
+	n, err = svc.SweepOrphans(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 1, n)
+	assert.Equal(t, gcaltest.RefreshToken, e.fake.Revoked)
+}
+
+func TestXGcalSwitchCalendarOldCalendarGone(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	e.connect(t)
+	hh := householdCal
+	require.NoError(t, e.svc.UpdateSettings(ctx, e.gid, gcal.SettingsInput{CalendarID: &hh}))
+	s := e.svc.Store()
+	require.NoError(t, s.UpsertLink(ctx, e.gid, gcal.SourceMaintenance, uuid.New(), "ev1", "h", time.Now()))
+	e.fake.Set(func(f *gcaltest.Fake) { f.Gone = map[string]bool{hh: true} })
+
+	oc := ownerCal
+	require.NoError(t, e.svc.UpdateSettings(ctx, e.gid, gcal.SettingsInput{CalendarID: &oc}))
+	st, err := e.svc.Status(ctx, e.gid)
+	require.NoError(t, err)
+	assert.Equal(t, ownerCal, st.CalendarID, "can switch away from a deleted calendar")
+	links, _ := s.ListLinks(ctx, e.gid)
+	assert.Empty(t, links)
+}
