@@ -35,7 +35,7 @@ type icsEnv struct {
 func newIcsEnv(t *testing.T, limiter *ics.Limiter) icsEnv {
 	t.Helper()
 	a, token, gid, deps := newCustomTestApp(t)
-	deps.Config = xconfig.Config{PublicBaseURL: "https://homebox.example.org"}
+	deps.Config = xconfig.Config{PublicBaseURL: gcalTestBaseURL}
 	deps.Maintenance = upstream.NewMaintenanceReader(a.db)
 	deps.IcsLimiter = limiter
 	r := chi.NewRouter()
@@ -77,7 +77,7 @@ func (e icsEnv) feedPath(t *testing.T) (path, token string) {
 	body := decodeBody[struct {
 		URL string `json:"url"`
 	}](t, rec)
-	const prefix = "https://homebox.example.org"
+	const prefix = gcalTestBaseURL
 	require.True(t, strings.HasPrefix(body.URL, prefix+"/api/v1/x/calendar/"), body.URL)
 	require.True(t, strings.HasSuffix(body.URL, ".ics"))
 	path = strings.TrimPrefix(body.URL, prefix)
