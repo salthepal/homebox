@@ -23,8 +23,6 @@ import (
 
 type gcaltestFake = gcaltest.Fake
 
-const householdCal = "household@group.calendar.google.com"
-
 // fakeLister is an in-memory stand-in for upstream maintenance entries.
 type fakeLister struct {
 	mu    sync.Mutex
@@ -427,7 +425,7 @@ func TestXReconcileOtherFailureKeepsGoingAndReportsError(t *testing.T) {
 	r2.lister.set(item("a", day(2027, 3, 1)), item("b", day(2027, 3, 2)))
 	_, err := r2.rec.Reconcile(context.Background(), r2.gid)
 	require.Error(t, err)
-	assert.NotErrorIs(t, err, gcal.ErrBroken)
+	require.NotErrorIs(t, err, gcal.ErrBroken)
 	assert.Len(t, r2.events(), 1, "the other entry was still synced")
 
 	st, serr := r2.svc.Status(context.Background(), r2.gid)

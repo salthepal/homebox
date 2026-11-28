@@ -137,91 +137,133 @@ func (r *Reconciler) Reconcile(ctx context.Context, gid uuid.UUID) (res Result, 
 	return res, err
 }
 
-func (r *Reconciler) run(ctx context.Context, gid uuid.UUID, c *Client, conn Connection, res *Result) error {
-	now := r.opt.Now()
+// runState is everything one reconcile run works from: the desired set, the stored links
+// and what is on the calendar that is ours.
+type runState struct {
+	gid     uuid.UUID
+	c       *Client
+	conn    Connection
+	res     *Result
+	now     time.Time
+	desired map[linkKey]Desired
+	managed map[string]struct{}
+	links   map[linkKey]Link
+	remote  map[string]Event // our events on the calendar by event ID
+	byKey   map[linkKey]Event
+	// firstErr is the first per-event failure; one bad entry doesn't block the rest.
+	firstErr error
+}
 
-	// 1. Desired set, from every provider.
-	desired := map[linkKey]Desired{}
-	managed := map[string]struct{}{}
+func (r *Reconciler) run(ctx context.Context, gid uuid.UUID, c *Client, conn Connection, res *Result) error {
+	st := &runState{gid: gid, c: c, conn: conn, res: res, now: r.opt.Now()}
+	if err := r.loadDesired(ctx, st); err != nil {
+		return err
+	}
+	if err := r.loadState(ctx, st); err != nil {
+		return err
+	}
+	if err := r.relink(ctx, st); err != nil {
+		return err
+	}
+	if err := r.applyUpserts(ctx, st); err != nil {
+		return err
+	}
+	if err := r.applyDeletes(ctx, st); err != nil {
+		return err
+	}
+	return st.firstErr
+}
+
+// loadDesired builds the desired set from every provider (step 1).
+func (r *Reconciler) loadDesired(ctx context.Context, st *runState) error {
+	st.desired = map[linkKey]Desired{}
+	st.managed = map[string]struct{}{}
 	for _, p := range r.providers {
-		managed[p.SourceType()] = struct{}{}
-		ds, err := p.Desired(ctx, gid, conn)
+		st.managed[p.SourceType()] = struct{}{}
+		ds, err := p.Desired(ctx, st.gid, st.conn)
 		if err != nil {
 			return fmt.Errorf("reading %s sources: %w", p.SourceType(), err)
 		}
 		for _, d := range ds {
-			desired[linkKey{d.SourceType, d.SourceID}] = d
+			st.desired[linkKey{d.SourceType, d.SourceID}] = d
 		}
 	}
+	return nil
+}
 
-	// 2. Current links, 3. what is on the calendar that is ours.
-	linkList, err := r.svc.store.ListLinks(ctx, gid)
+// loadState reads the current links and the calendar's events that are ours (steps 2, 3).
+func (r *Reconciler) loadState(ctx context.Context, st *runState) error {
+	linkList, err := r.svc.store.ListLinks(ctx, st.gid)
 	if err != nil {
 		return err
 	}
-	links := make(map[linkKey]Link, len(linkList))
+	st.links = make(map[linkKey]Link, len(linkList))
 	for _, l := range linkList {
-		links[linkKey{l.SourceType, l.SourceID}] = l
+		st.links[linkKey{l.SourceType, l.SourceID}] = l
 	}
 
-	remoteList, err := c.ListEvents(ctx, conn.CalendarID, ListEventsParams{
+	remoteList, err := st.c.ListEvents(ctx, st.conn.CalendarID, ListEventsParams{
 		PrivateExtendedProperty: OwnerProperty + "=" + OwnerValue,
 	})
 	if err != nil {
-		return r.svc.ClassifyError(ctx, gid, err)
+		return r.svc.ClassifyError(ctx, st.gid, err)
 	}
-	remote := make(map[string]Event, len(remoteList))
-	byKey := map[linkKey]Event{}
+	st.remote = make(map[string]Event, len(remoteList))
+	st.byKey = map[linkKey]Event{}
 	sort.Slice(remoteList, func(i, j int) bool { return remoteList[i].ID < remoteList[j].ID })
 	for _, ev := range remoteList {
 		if !ev.IsOurs() {
 			continue // the server filter should guarantee this; never trust it alone
 		}
-		remote[ev.ID] = ev
+		st.remote[ev.ID] = ev
 		if k, ok := keyOf(ev); ok {
-			if _, dup := byKey[k]; !dup {
-				byKey[k] = ev
+			if _, dup := st.byKey[k]; !dup {
+				st.byKey[k] = ev
 			}
 		}
 	}
+	return nil
+}
 
-	// 4. Rebuild links from the calendar: an owned event of a managed type with no usable
-	// link is re-linked by its homebox_id instead of being duplicated. Hash "" forces one
-	// patch so the event content is checked against the source.
-	for k, ev := range byKey {
-		if _, managedType := managed[k.typ]; !managedType {
+// relink rebuilds links from the calendar: an owned event of a managed type with no usable
+// link is re-linked by its homebox_id instead of being duplicated. Hash "" forces one patch
+// so the event content is checked against the source (step 4).
+func (r *Reconciler) relink(ctx context.Context, st *runState) error {
+	for k, ev := range st.byKey {
+		if _, managedType := st.managed[k.typ]; !managedType {
 			continue
 		}
-		l, linked := links[k]
-		if linked {
-			if _, present := remote[l.EventID]; present {
+		if l, linked := st.links[k]; linked {
+			if _, present := st.remote[l.EventID]; present {
 				continue
 			}
 		}
-		if err := r.svc.store.UpsertLink(ctx, gid, k.typ, k.id, ev.ID, "", now); err != nil {
+		if err := r.svc.store.UpsertLink(ctx, st.gid, k.typ, k.id, ev.ID, "", st.now); err != nil {
 			return err
 		}
-		links[k] = Link{GroupID: gid, SourceType: k.typ, SourceID: k.id, EventID: ev.ID}
-		res.Relinked++
+		st.links[k] = Link{GroupID: st.gid, SourceType: k.typ, SourceID: k.id, EventID: ev.ID}
+		st.res.Relinked++
 	}
+	return nil
+}
 
-	var firstErr error
-	// soft records a per-event failure so one bad entry doesn't block the rest. Credential
-	// failures and cancellation stop the run.
-	soft := func(err error) error {
-		err = r.svc.ClassifyError(ctx, gid, err)
-		if errors.Is(err, ErrBroken) || ctx.Err() != nil {
-			return err
-		}
-		if firstErr == nil {
-			firstErr = err
-		}
-		return nil
+// soft records a per-event failure so one bad entry doesn't block the rest. Credential
+// failures and cancellation stop the run.
+func (r *Reconciler) soft(ctx context.Context, st *runState, err error) error {
+	err = r.svc.ClassifyError(ctx, st.gid, err)
+	if errors.Is(err, ErrBroken) || ctx.Err() != nil {
+		return err
 	}
+	if st.firstErr == nil {
+		st.firstErr = err
+	}
+	return nil
+}
 
-	// 5. Inserts and patches, in a stable order.
-	keys := make([]linkKey, 0, len(desired))
-	for k := range desired {
+// applyUpserts inserts and patches events, in a stable order (step 5).
+func (r *Reconciler) applyUpserts(ctx context.Context, st *runState) error {
+	keys := make([]linkKey, 0, len(st.desired))
+	for k := range st.desired {
 		keys = append(keys, k)
 	}
 	sort.Slice(keys, func(i, j int) bool {
@@ -231,65 +273,72 @@ func (r *Reconciler) run(ctx context.Context, gid uuid.UUID, c *Client, conn Con
 		return keys[i].id.String() < keys[j].id.String()
 	})
 	for _, k := range keys {
-		d := desired[k]
-		l, linked := links[k]
-		_, present := remote[l.EventID]
-
-		insert := func() error {
-			created, err := c.InsertEvent(ctx, conn.CalendarID, d.Event)
-			if err != nil {
-				return err
-			}
-			res.Inserted++
-			return r.svc.store.UpsertLink(ctx, gid, k.typ, k.id, created.ID, d.Hash, now)
-		}
-
-		var err error
-		switch {
-		case !linked || !present:
-			err = insert()
-		case l.ContentHash == d.Hash:
-			res.Unchanged++
-		default:
-			if _, perr := c.PatchEvent(ctx, conn.CalendarID, l.EventID, d.Event); perr == nil {
-				res.Patched++
-				err = r.svc.store.UpsertLink(ctx, gid, k.typ, k.id, l.EventID, d.Hash, now)
-			} else if IsNotFound(perr) {
-				err = insert() // deleted on the calendar since we listed: put it back
-			} else {
-				err = perr
-			}
-		}
-		if err != nil {
-			if stop := soft(err); stop != nil {
+		if err := r.upsertOne(ctx, st, k); err != nil {
+			if stop := r.soft(ctx, st, err); stop != nil {
 				return stop
 			}
 		}
 	}
+	return nil
+}
 
-	// 6. Links whose source is gone (or no longer wanted): delete the event, but only an
-	// event that is on the calendar and carries our marker.
-	for k, l := range links {
-		if _, managedType := managed[k.typ]; !managedType {
+func (r *Reconciler) upsertOne(ctx context.Context, st *runState, k linkKey) error {
+	d := st.desired[k]
+	l, linked := st.links[k]
+	_, present := st.remote[l.EventID]
+
+	insert := func() error {
+		created, err := st.c.InsertEvent(ctx, st.conn.CalendarID, d.Event)
+		if err != nil {
+			return err
+		}
+		st.res.Inserted++
+		return r.svc.store.UpsertLink(ctx, st.gid, k.typ, k.id, created.ID, d.Hash, st.now)
+	}
+
+	switch {
+	case !linked || !present:
+		return insert()
+	case l.ContentHash == d.Hash:
+		st.res.Unchanged++
+		return nil
+	}
+	_, perr := st.c.PatchEvent(ctx, st.conn.CalendarID, l.EventID, d.Event)
+	switch {
+	case perr == nil:
+		st.res.Patched++
+		return r.svc.store.UpsertLink(ctx, st.gid, k.typ, k.id, l.EventID, d.Hash, st.now)
+	case IsNotFound(perr):
+		return insert() // deleted on the calendar since we listed: put it back
+	default:
+		return perr
+	}
+}
+
+// applyDeletes handles links whose source is gone (or no longer wanted): delete the event,
+// but only an event that is on the calendar and carries our marker (step 6).
+func (r *Reconciler) applyDeletes(ctx context.Context, st *runState) error {
+	for k, l := range st.links {
+		if _, managedType := st.managed[k.typ]; !managedType {
 			continue
 		}
-		if _, wanted := desired[k]; wanted {
+		if _, wanted := st.desired[k]; wanted {
 			continue
 		}
-		if _, ours := remote[l.EventID]; ours {
-			if err := c.DeleteEvent(ctx, conn.CalendarID, l.EventID); err != nil && !IsNotFound(err) {
-				if stop := soft(err); stop != nil {
+		if _, ours := st.remote[l.EventID]; ours {
+			if err := st.c.DeleteEvent(ctx, st.conn.CalendarID, l.EventID); err != nil && !IsNotFound(err) {
+				if stop := r.soft(ctx, st, err); stop != nil {
 					return stop
 				}
 				continue // keep the link so the next run retries
 			}
-			res.Deleted++
+			st.res.Deleted++
 		}
-		if err := r.svc.store.DeleteLink(ctx, gid, k.typ, k.id); err != nil {
+		if err := r.svc.store.DeleteLink(ctx, st.gid, k.typ, k.id); err != nil {
 			return err
 		}
 	}
-	return firstErr
+	return nil
 }
 
 // keyOf reads the source a Homebox event was made from out of its private properties.
