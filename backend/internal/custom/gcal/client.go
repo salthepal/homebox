@@ -155,10 +155,39 @@ func (c *Client) InsertEvent(ctx context.Context, calendarID string, ev Event) (
 	return out, err
 }
 
-// PatchEvent updates the given fields of an existing event.
+// eventPatch is the body of a PATCH. Google leaves omitted fields unchanged, so the fields
+// Homebox must be able to clear (description, reminder overrides) are always sent, even when
+// empty; Event's omitempty tags would silently turn "clear this" into "leave it alone".
+type eventPatch struct {
+	Summary            string              `json:"summary"`
+	Description        string              `json:"description"`
+	Start              *EventDate          `json:"start,omitempty"`
+	End                *EventDate          `json:"end,omitempty"`
+	Reminders          *remindersPatch     `json:"reminders,omitempty"`
+	ExtendedProperties *ExtendedProperties `json:"extendedProperties,omitempty"`
+}
+
+type remindersPatch struct {
+	UseDefault bool               `json:"useDefault"`
+	Overrides  []ReminderOverride `json:"overrides"` // [] (not omitted) clears existing reminders
+}
+
+// PatchEvent updates an existing event to match ev. Summary and description are always
+// written (an empty description clears it); reminders, when set, replace the event's
+// reminders entirely, including clearing them when ev has none.
 func (c *Client) PatchEvent(ctx context.Context, calendarID, eventID string, ev Event) (Event, error) {
+	body := eventPatch{
+		Summary: ev.Summary, Description: ev.Description,
+		Start: ev.Start, End: ev.End, ExtendedProperties: ev.ExtendedProperties,
+	}
+	if ev.Reminders != nil {
+		body.Reminders = &remindersPatch{UseDefault: ev.Reminders.UseDefault, Overrides: ev.Reminders.Overrides}
+		if body.Reminders.Overrides == nil {
+			body.Reminders.Overrides = []ReminderOverride{}
+		}
+	}
 	var out Event
-	err := c.do(ctx, http.MethodPatch, eventsPath(calendarID, eventID), nil, ev, &out)
+	err := c.do(ctx, http.MethodPatch, eventsPath(calendarID, eventID), nil, body, &out)
 	return out, err
 }
 
@@ -259,7 +288,10 @@ func (c *Client) do(ctx context.Context, method, path string, q url.Values, in, 
 		}
 
 		lastErr = parseAPIError(resp.StatusCode, data)
-		retryable := resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
+		// A 5xx on a POST may mean Google created the event anyway, so retrying could
+		// duplicate it: POSTs retry on 429 only.
+		retryable := resp.StatusCode == http.StatusTooManyRequests ||
+			(resp.StatusCode >= 500 && method != http.MethodPost)
 		if !retryable || attempt == maxAttempts {
 			return lastErr
 		}

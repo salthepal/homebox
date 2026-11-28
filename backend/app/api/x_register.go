@@ -19,6 +19,7 @@ import (
 	xapi "github.com/sysadminsmedia/homebox/backend/internal/custom/api"
 	xconfig "github.com/sysadminsmedia/homebox/backend/internal/custom/config"
 	xent "github.com/sysadminsmedia/homebox/backend/internal/custom/ent"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/gcal"
 	xmigrations "github.com/sysadminsmedia/homebox/backend/internal/custom/migrations"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/projects"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/upstream"
@@ -48,7 +49,8 @@ func registerCustom(a *app, cfg *config.Config, router *chi.Mux, chain *errchain
 	log.Info().Ints64("applied", applied).Msg("custom migrations up to date")
 
 	xc := xent.NewClient(xent.Driver(entsql.OpenDB(dialect, db)))
-	deps := xapi.Deps{Ent: xc, Config: xcfg, Projects: newProjectsService(a, xc, db, dialect)}
+	gcalOpts := gcalOptions(a)
+	deps := xapi.Deps{Ent: xc, Config: xcfg, Gcal: gcalOpts, Projects: newProjectsService(a, xc, db, dialect)}
 	registerCustomGcal(a, xcfg, xc, runner, &deps)
 	mountCustomRoutes(a, router, chain, deps)
 
@@ -62,7 +64,21 @@ func registerCustom(a *app, cfg *config.Config, router *chi.Mux, chain *errchain
 			log.Error().Err(err).Msg("custom projects orphan sweep failed")
 		}
 	}))
+	gsvc := gcal.New(xc, xcfg, gcalOpts)
+	runner.AddPlugin(NewTask("x-gcal-sweep", 24*time.Hour, func(ctx context.Context) {
+		if n, err := gsvc.SweepOrphans(ctx); err != nil {
+			log.Error().Err(err).Msg("custom gcal orphan sweep failed")
+		} else if n > 0 {
+			log.Info().Int("removed", n).Msg("custom gcal orphan connections removed")
+		}
+	}))
 	return nil
+}
+
+// gcalOptions wires the upstream group adapter into the gcal service (R10).
+func gcalOptions(a *app) gcal.Options {
+	g := upstream.NewGroups(a.db)
+	return gcal.Options{IsMember: g.IsMember, GroupsExist: g.ExistingIDs}
 }
 
 // newProjectsService wires the Projects service onto upstream via the adapters (R10).

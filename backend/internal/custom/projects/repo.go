@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	xent "github.com/sysadminsmedia/homebox/backend/internal/custom/ent"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/predicate"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xproject"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xprojectstep"
 )
@@ -49,15 +50,12 @@ func dateOnly(t *time.Time) *time.Time {
 
 // CreateProject creates a project in group gid.
 func (r *Repo) CreateProject(ctx context.Context, gid uuid.UUID, in ProjectInput) (Project, error) {
-	if strings.TrimSpace(in.Name) == "" || in.Priority < 0 || in.Priority > 3 {
-		return Project{}, fmt.Errorf("%w: name required, priority 0-3", ErrInvalid)
+	if err := validateProjectInput(in); err != nil {
+		return Project{}, err
 	}
 	status := in.Status
 	if status == "" {
 		status = StatusIdea
-	}
-	if !validProjectStatus(status) {
-		return Project{}, fmt.Errorf("%w: status %q", ErrInvalid, status)
 	}
 	c := r.ent.XProject.Create().
 		SetGroupID(gid).
@@ -66,7 +64,7 @@ func (r *Repo) CreateProject(ctx context.Context, gid uuid.UUID, in ProjectInput
 		SetStatus(xproject.Status(status)).
 		SetPriority(in.Priority).
 		SetNillableTargetDate(dateOnly(in.TargetDate)).
-		SetNillableBudget(in.Budget)
+		SetNillableBudget(money(in.Budget))
 	if status == StatusInProgress {
 		c.SetStartedAt(time.Now().UTC())
 	}
@@ -142,11 +140,8 @@ func (r *Repo) withLinks(ctx context.Context, rows []*xent.XProject) ([]Project,
 // maintained from status transitions: first entering in_progress sets started_at; entering
 // done sets completed_at; leaving done clears it.
 func (r *Repo) UpdateProject(ctx context.Context, gid, id uuid.UUID, in ProjectInput) (Project, error) {
-	if strings.TrimSpace(in.Name) == "" || in.Priority < 0 || in.Priority > 3 {
-		return Project{}, fmt.Errorf("%w: name required, priority 0-3", ErrInvalid)
-	}
-	if in.Status != "" && !validProjectStatus(in.Status) {
-		return Project{}, fmt.Errorf("%w: status %q", ErrInvalid, in.Status)
+	if err := validateProjectInput(in); err != nil {
+		return Project{}, err
 	}
 	cur, err := r.ent.XProject.Query().Where(xproject.ID(id), xproject.GroupID(gid)).Only(ctx)
 	if xent.IsNotFound(err) {
@@ -160,7 +155,7 @@ func (r *Repo) UpdateProject(ctx context.Context, gid, id uuid.UUID, in ProjectI
 		SetDescription(in.Description).
 		SetPriority(in.Priority).
 		SetNillableTargetDate(dateOnly(in.TargetDate)).
-		SetNillableBudget(in.Budget)
+		SetNillableBudget(money(in.Budget))
 	if in.TargetDate == nil {
 		u.ClearTargetDate()
 	}
@@ -234,17 +229,9 @@ func (r *Repo) ownsProject(ctx context.Context, gid, pid uuid.UUID) error {
 	return nil
 }
 
-func validateStep(in StepInput) error {
-	if strings.TrimSpace(in.Title) == "" {
-		return fmt.Errorf("%w: title required", ErrInvalid)
-	}
-	if in.Status != "" && !validStepStatus(in.Status) {
-		return fmt.Errorf("%w: step status %q", ErrInvalid, in.Status)
-	}
-	return nil
-}
-
-// AddStep appends a step to the end of a project.
+// AddStep appends a step to the end of a project. A step created in "doing" moves an
+// idea/planning project to in_progress in the same transaction, so a failure leaves neither
+// the step nor the transition behind.
 func (r *Repo) AddStep(ctx context.Context, gid, pid uuid.UUID, in StepInput) (Step, error) {
 	if err := validateStep(in); err != nil {
 		return Step{}, err
@@ -256,22 +243,26 @@ func (r *Repo) AddStep(ctx context.Context, gid, pid uuid.UUID, in StepInput) (S
 	if status == "" {
 		status = StepTodo
 	}
+	tx, err := r.ent.Tx(ctx)
+	if err != nil {
+		return Step{}, err
+	}
 	pos := 0
-	if last, err := r.ent.XProjectStep.Query().Where(xprojectstep.ProjectID(pid)).
+	if last, err := tx.XProjectStep.Query().Where(xprojectstep.ProjectID(pid)).
 		Order(xent.Desc(xprojectstep.FieldPosition)).First(ctx); err == nil {
 		pos = last.Position + 1
 	} else if !xent.IsNotFound(err) {
-		return Step{}, err
+		return Step{}, rollback(tx, err)
 	}
-	c := r.ent.XProjectStep.Create().
+	c := tx.XProjectStep.Create().
 		SetProjectID(pid).
 		SetPosition(pos).
 		SetTitle(strings.TrimSpace(in.Title)).
 		SetNotes(in.Notes).
 		SetStatus(xprojectstep.Status(status)).
 		SetNillableDueDate(dateOnly(in.DueDate)).
-		SetNillableEstCost(in.EstCost).
-		SetNillableActualCost(in.ActualCost).
+		SetNillableEstCost(money(in.EstCost)).
+		SetNillableActualCost(money(in.ActualCost)).
 		SetNillableURL(in.URL).
 		SetNillableEntityID(in.EntityID).
 		SetLogAsMaintenance(in.LogAsMaintenance)
@@ -280,9 +271,46 @@ func (r *Repo) AddStep(ctx context.Context, gid, pid uuid.UUID, in StepInput) (S
 	}
 	row, err := c.Save(ctx)
 	if err != nil {
+		return Step{}, rollback(tx, err)
+	}
+	if status == StepDoing {
+		if _, err := startProject(ctx, tx.XProject, gid, pid); err != nil {
+			return Step{}, rollback(tx, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
 		return Step{}, err
 	}
 	return toStep(row), nil
+}
+
+// StartProject moves an idea/planning project to in_progress (setting started_at the first
+// time) and reports whether it did. It touches only status and started_at, and only while
+// the project is still idea/planning, so it can't overwrite a concurrent edit of any other
+// field and never moves a project that was already started, finished or put on hold.
+func (r *Repo) StartProject(ctx context.Context, gid, pid uuid.UUID) (bool, error) {
+	return startProject(ctx, r.ent.XProject, gid, pid)
+}
+
+func startProject(ctx context.Context, c *xent.XProjectClient, gid, pid uuid.UUID) (bool, error) {
+	where := func() []predicate.XProject {
+		return []predicate.XProject{
+			xproject.ID(pid), xproject.GroupID(gid),
+			xproject.StatusIn(xproject.Status(StatusIdea), xproject.Status(StatusPlanning)),
+		}
+	}
+	// First start: also stamp started_at. Restart (e.g. back to planning and again): keep it.
+	n, err := c.Update().Where(where()...).Where(xproject.StartedAtIsNil()).
+		SetStatus(xproject.Status(StatusInProgress)).SetStartedAt(time.Now().UTC()).Save(ctx)
+	if err != nil {
+		return false, err
+	}
+	if n > 0 {
+		return true, nil
+	}
+	n, err = c.Update().Where(where()...).
+		SetStatus(xproject.Status(StatusInProgress)).Save(ctx)
+	return n > 0, err
 }
 
 func (r *Repo) getStep(ctx context.Context, gid, pid, sid uuid.UUID) (*xent.XProjectStep, error) {
@@ -305,7 +333,8 @@ func (r *Repo) GetStep(ctx context.Context, gid, pid, sid uuid.UUID) (Step, erro
 	return toStep(row), nil
 }
 
-// UpdateStep replaces the editable fields of a step.
+// UpdateStep replaces the editable fields of a step. A step moving into "doing" starts an
+// idea/planning project in the same transaction.
 func (r *Repo) UpdateStep(ctx context.Context, gid, pid, sid uuid.UUID, in StepInput) (Step, error) {
 	if err := validateStep(in); err != nil {
 		return Step{}, err
@@ -314,12 +343,16 @@ func (r *Repo) UpdateStep(ctx context.Context, gid, pid, sid uuid.UUID, in StepI
 	if err != nil {
 		return Step{}, err
 	}
-	u := cur.Update().
+	tx, err := r.ent.Tx(ctx)
+	if err != nil {
+		return Step{}, err
+	}
+	u := tx.XProjectStep.UpdateOne(cur).
 		SetTitle(strings.TrimSpace(in.Title)).
 		SetNotes(in.Notes).
 		SetNillableDueDate(dateOnly(in.DueDate)).
-		SetNillableEstCost(in.EstCost).
-		SetNillableActualCost(in.ActualCost).
+		SetNillableEstCost(money(in.EstCost)).
+		SetNillableActualCost(money(in.ActualCost)).
 		SetNillableURL(in.URL).
 		SetNillableEntityID(in.EntityID).
 		SetLogAsMaintenance(in.LogAsMaintenance)
@@ -348,6 +381,16 @@ func (r *Repo) UpdateStep(ctx context.Context, gid, pid, sid uuid.UUID, in StepI
 	}
 	row, err := u.Save(ctx)
 	if err != nil {
+		return Step{}, rollback(tx, err)
+	}
+	// Only a step moving INTO doing starts the project; editing a step that is already
+	// doing must not re-start a project the user moved back to planning.
+	if in.Status == StepDoing && string(cur.Status) != StepDoing {
+		if _, err := startProject(ctx, tx.XProject, gid, pid); err != nil {
+			return Step{}, rollback(tx, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
 		return Step{}, err
 	}
 	return toStep(row), nil
@@ -375,6 +418,73 @@ func (r *Repo) CompleteStep(ctx context.Context, gid, pid, sid uuid.UUID, c Step
 		u.SetMaintenanceEntryID(*c.MaintenanceEntryID)
 	}
 	row, err := u.Save(ctx)
+	if err != nil {
+		return Step{}, err
+	}
+	return toStep(row), nil
+}
+
+// ClaimStep atomically marks a not-yet-done step done (completed_at, actual cost, logging
+// flag) and returns the step as it was before. It is the first stage of completion: of any
+// number of concurrent callers exactly one wins, the rest get ErrConflict, so the upstream
+// side effect (the maintenance entry) is created at most once. Undo with ReleaseStep.
+func (r *Repo) ClaimStep(ctx context.Context, gid, pid, sid uuid.UUID, c StepCompletion) (Step, error) {
+	cur, err := r.getStep(ctx, gid, pid, sid)
+	if err != nil {
+		return Step{}, err
+	}
+	at := c.At
+	if at.IsZero() {
+		at = time.Now()
+	}
+	u := r.ent.XProjectStep.Update().
+		Where(xprojectstep.ID(sid), xprojectstep.ProjectID(pid),
+			xprojectstep.StatusNEQ(xprojectstep.StatusDone)).
+		SetStatus(xprojectstep.StatusDone).
+		SetCompletedAt(at.UTC()).
+		SetLogAsMaintenance(c.LogAsMaintenance)
+	if c.ActualCost != nil {
+		u.SetActualCost(*money(c.ActualCost))
+	}
+	n, err := u.Save(ctx)
+	if err != nil {
+		return Step{}, err
+	}
+	if n == 0 {
+		return Step{}, fmt.Errorf("%w: step already completed", ErrConflict)
+	}
+	return toStep(cur), nil
+}
+
+// ReleaseStep reverts a ClaimStep: the step gets prev's status, actual cost and logging flag
+// back, and completed_at and maintenance_entry_id are cleared.
+func (r *Repo) ReleaseStep(ctx context.Context, gid, pid, sid uuid.UUID, prev Step) error {
+	if err := r.ownsProject(ctx, gid, pid); err != nil {
+		return err
+	}
+	u := r.ent.XProjectStep.Update().
+		Where(xprojectstep.ID(sid), xprojectstep.ProjectID(pid),
+			xprojectstep.StatusEQ(xprojectstep.StatusDone)).
+		SetStatus(xprojectstep.Status(prev.Status)).
+		SetLogAsMaintenance(prev.LogAsMaintenance).
+		ClearCompletedAt().
+		ClearMaintenanceEntryID()
+	if prev.ActualCost != nil {
+		u.SetActualCost(*prev.ActualCost)
+	} else {
+		u.ClearActualCost()
+	}
+	_, err := u.Save(ctx)
+	return err
+}
+
+// RecordStepMaintenance stores the upstream maintenance entry ID on a claimed step.
+func (r *Repo) RecordStepMaintenance(ctx context.Context, gid, pid, sid, entryID uuid.UUID) (Step, error) {
+	cur, err := r.getStep(ctx, gid, pid, sid)
+	if err != nil {
+		return Step{}, err
+	}
+	row, err := cur.Update().SetMaintenanceEntryID(entryID).Save(ctx)
 	if err != nil {
 		return Step{}, err
 	}

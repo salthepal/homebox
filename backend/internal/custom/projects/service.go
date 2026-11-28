@@ -49,6 +49,8 @@ type Service struct {
 // before the service is used concurrently.
 func (s *Service) SetNotifier(n Notifier) { s.notify = n }
 
+// changed tells the notifier that gid's projects changed. Only call it after a write has
+// succeeded, never from a revert path.
 func (s *Service) changed(gid uuid.UUID) {
 	if s.notify != nil {
 		s.notify.Enqueue(gid)
@@ -197,62 +199,54 @@ func (s *Service) requireEntities(ctx context.Context, gid uuid.UUID, ids []uuid
 	return nil
 }
 
-// AddStep appends a step. A step created already in "doing" starts the project.
+// errStepDone explains why ordinary step writes can't set status "done".
+func errStepDone() error {
+	return fmt.Errorf("%w: use POST .../steps/{id}/complete to mark a step done", ErrInvalid)
+}
+
+// AddStep appends a step. A step created in "doing" starts the project (atomically, in the
+// repo). Steps can't be created already done: completion goes through CompleteStep so the
+// maintenance entry isn't skipped.
 func (s *Service) AddStep(ctx context.Context, gid, pid uuid.UUID, in StepInput) (Step, error) {
+	if in.Status == StepDone {
+		return Step{}, errStepDone()
+	}
 	if in.EntityID != nil {
 		if err := s.requireEntities(ctx, gid, []uuid.UUID{*in.EntityID}); err != nil {
 			return Step{}, err
 		}
 	}
 	step, err := s.repo.AddStep(ctx, gid, pid, in)
-	if err != nil {
-		return Step{}, err
+	if err == nil {
+		s.changed(gid)
 	}
-	s.changed(gid)
-	if step.Status == StepDoing {
-		if err := s.suggestStart(ctx, gid, pid); err != nil {
-			return Step{}, err
-		}
-	}
-	return step, nil
+	return step, err
 }
 
-// UpdateStep replaces a step's editable fields. The first step moving to "doing" moves an
-// idea/planning project to in_progress (started_at is set by the repo).
+// UpdateStep replaces a step's editable fields. A step moving to "doing" moves an
+// idea/planning project to in_progress (in the repo, in the same transaction). Moving a step
+// to "done" is rejected (use CompleteStep); a step that is already done may be edited and may
+// leave done.
 func (s *Service) UpdateStep(ctx context.Context, gid, pid, sid uuid.UUID, in StepInput) (Step, error) {
+	if in.Status == StepDone {
+		cur, err := s.repo.GetStep(ctx, gid, pid, sid)
+		if err != nil {
+			return Step{}, err
+		}
+		if cur.Status != StepDone {
+			return Step{}, errStepDone()
+		}
+	}
 	if in.EntityID != nil {
 		if err := s.requireEntities(ctx, gid, []uuid.UUID{*in.EntityID}); err != nil {
 			return Step{}, err
 		}
 	}
 	step, err := s.repo.UpdateStep(ctx, gid, pid, sid, in)
-	if err != nil {
-		return Step{}, err
+	if err == nil {
+		s.changed(gid)
 	}
-	s.changed(gid)
-	if step.Status == StepDoing {
-		if err := s.suggestStart(ctx, gid, pid); err != nil {
-			return Step{}, err
-		}
-	}
-	return step, nil
-}
-
-// suggestStart moves an idea/planning project to in_progress. It never closes a project:
-// finishing is always the user's decision (the UI prompts when all steps are done).
-func (s *Service) suggestStart(ctx context.Context, gid, pid uuid.UUID) error {
-	p, err := s.repo.GetProject(ctx, gid, pid)
-	if err != nil {
-		return err
-	}
-	if p.Status != StatusIdea && p.Status != StatusPlanning {
-		return nil
-	}
-	_, err = s.repo.UpdateProject(ctx, gid, pid, ProjectInput{
-		Name: p.Name, Description: p.Description, Status: StatusInProgress,
-		Priority: p.Priority, TargetDate: p.TargetDate, Budget: p.Budget,
-	})
-	return err
+	return step, err
 }
 
 // DeleteStep removes a step.
@@ -280,9 +274,12 @@ type CompleteInput struct {
 	LogAsMaintenance *bool
 }
 
-// CompleteStep marks a step done. When logging is on and the step has an item, it first
-// creates a completed upstream maintenance entry (name = step title, description = notes +
-// "From project: <name>", cost = actual cost, date = now) and stores its ID on the step.
+// CompleteStep marks a step done. It first claims the step atomically (status done,
+// completed_at, cost) so concurrent completions can't both log maintenance: the loser gets
+// ErrConflict. When logging is on and the step has an item, it then creates a completed
+// upstream maintenance entry (name = step title, description = notes + "From project:
+// <name>", cost = actual cost, date = now) and stores its ID on the step. If creating the
+// entry or recording its ID fails, the entry is deleted and the claim is reverted.
 func (s *Service) CompleteStep(ctx context.Context, gid, pid, sid uuid.UUID, in CompleteInput) (Step, error) {
 	p, err := s.repo.GetProject(ctx, gid, pid)
 	if err != nil {
@@ -295,8 +292,8 @@ func (s *Service) CompleteStep(ctx context.Context, gid, pid, sid uuid.UUID, in 
 	if step.Status == StepDone {
 		return Step{}, fmt.Errorf("%w: step already completed", ErrConflict)
 	}
-	if in.ActualCost != nil && *in.ActualCost < 0 {
-		return Step{}, fmt.Errorf("%w: actual_cost must not be negative", ErrInvalid)
+	if err := ValidateMoney("actual_cost", in.ActualCost); err != nil {
+		return Step{}, err
 	}
 
 	logIt := step.LogAsMaintenance
@@ -307,46 +304,61 @@ func (s *Service) CompleteStep(ctx context.Context, gid, pid, sid uuid.UUID, in 
 	if in.ActualCost != nil {
 		cost = in.ActualCost
 	}
+	if logIt && step.EntityID == nil {
+		return Step{}, fmt.Errorf("%w: step has no item to log maintenance on", ErrInvalid)
+	}
 	now := s.now()
-	comp := StepCompletion{ActualCost: cost, LogAsMaintenance: logIt, At: now}
+	prev, err := s.repo.ClaimStep(ctx, gid, pid, sid, StepCompletion{ActualCost: cost, LogAsMaintenance: logIt, At: now})
+	if err != nil {
+		return Step{}, err
+	}
+	if !logIt {
+		// The claim is the whole write here, so the calendar can follow it right away.
+		s.changed(gid)
+		return s.repo.GetStep(ctx, gid, pid, sid)
+	}
 
-	if logIt {
-		if step.EntityID == nil {
-			return Step{}, fmt.Errorf("%w: step has no item to log maintenance on", ErrInvalid)
-		}
-		desc := strings.TrimSpace(step.Notes)
-		if desc != "" {
-			desc += "\n\n"
-		}
-		desc += "From project: " + p.Name
-		var c float64
-		if cost != nil {
-			c = *cost
-		}
-		mid, err := s.maint.CreateCompleted(ctx, gid, *step.EntityID, upstream.MaintenanceInput{
-			Name: step.Title, Description: desc, Cost: c, Date: now,
-		})
+	desc := strings.TrimSpace(step.Notes)
+	if desc != "" {
+		desc += "\n\n"
+	}
+	desc += "From project: " + p.Name
+	var c float64
+	if cost != nil {
+		c = *cost
+	}
+	mid, err := s.maint.CreateCompleted(ctx, gid, *step.EntityID, upstream.MaintenanceInput{
+		Name: step.Title, Description: desc, Cost: c, Date: now,
+	})
+	if err != nil {
+		s.release(gid, pid, sid, prev)
 		if errors.Is(err, upstream.ErrEntityNotFound) {
 			return Step{}, fmt.Errorf("%w: item %s not found", ErrInvalid, *step.EntityID)
 		}
-		if err != nil {
-			return Step{}, err
-		}
-		comp.MaintenanceEntryID = &mid
-	}
-
-	done, err := s.repo.CompleteStep(ctx, gid, pid, sid, comp)
-	if err != nil {
-		if comp.MaintenanceEntryID != nil {
-			// Undo the upstream entry so a retry doesn't log it twice.
-			if derr := s.maint.Delete(ctx, gid, *comp.MaintenanceEntryID); derr != nil {
-				log.Warn().Err(derr).Msg("projects: failed to roll back maintenance entry")
-			}
-		}
 		return Step{}, err
 	}
+	done, err := s.repo.RecordStepMaintenance(ctx, gid, pid, sid, mid)
+	if err != nil {
+		// Undo the upstream entry so a retry doesn't log it twice.
+		if derr := s.maint.Delete(ctx, gid, mid); derr != nil {
+			log.Warn().Err(derr).Msg("projects: failed to roll back maintenance entry")
+		}
+		s.release(gid, pid, sid, prev)
+		return Step{}, err
+	}
+	// Only now is the step done with its maintenance entry recorded. Notifying after the
+	// claim alone could put the step's own ✅ on the calendar next to the entry's.
 	s.changed(gid)
 	return done, nil
+}
+
+// release reverts a claim. It uses its own context: the request context may be what failed.
+func (s *Service) release(gid, pid, sid uuid.UUID, prev Step) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(context.Background()), 10*time.Second)
+	defer cancel()
+	if err := s.repo.ReleaseStep(ctx, gid, pid, sid, prev); err != nil {
+		log.Warn().Err(err).Msg("projects: failed to revert step claim")
+	}
 }
 
 // SweepOrphans removes references to upstream rows that no longer exist: project links and

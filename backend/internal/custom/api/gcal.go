@@ -39,10 +39,13 @@ type gcalHandlers struct {
 }
 
 // syncResponse is returned by "Sync now": what changed, plus the refreshed status (last sync
-// time and error) for the settings page.
+// time and error) for the settings page. When some entries synced and others failed, the
+// same body comes back with a 5xx status and Error set, so the page can still show what was
+// done alongside what went wrong.
 type syncResponse struct {
 	Result gcal.Result `json:"result"`
 	Status gcal.Status `json:"status"`
+	Error  string      `json:"error,omitempty"`
 }
 
 func (h *gcalHandlers) sync(w http.ResponseWriter, r *http.Request) error {
@@ -50,15 +53,41 @@ func (h *gcalHandlers) sync(w http.ResponseWriter, r *http.Request) error {
 	if h.rec == nil {
 		return validate.NewRequestError(errors.New("google calendar sync is not available"), http.StatusConflict)
 	}
-	res, err := h.rec.Reconcile(r.Context(), auth.GID)
-	if err != nil {
-		return gcalError(err)
+	res, syncErr := h.rec.Reconcile(r.Context(), auth.GID)
+	if syncErr != nil && !isPartialSyncError(syncErr) {
+		// Nothing was attempted (not connected, broken, not configured, no calendar).
+		return gcalError(syncErr)
 	}
 	st, err := h.svc.Status(r.Context(), auth.GID)
 	if err != nil {
 		return err
 	}
-	return server.JSON(w, http.StatusOK, syncResponse{Result: res, Status: st})
+	if syncErr == nil {
+		return server.JSON(w, http.StatusOK, syncResponse{Result: res, Status: st})
+	}
+
+	// Some work may have been done before the failure: keep it in the response.
+	status := http.StatusInternalServerError
+	var ae *gcal.APIError
+	if errors.As(syncErr, &ae) {
+		status = http.StatusBadGateway
+	}
+	return server.JSON(w, status, syncResponse{Result: res, Status: st, Error: syncErr.Error()})
+}
+
+// isPartialSyncError reports whether a Reconcile error came from running the sync (a Google
+// or database failure, possibly after other entries synced) rather than from the sync being
+// impossible to start.
+func isPartialSyncError(err error) bool {
+	var nc *gcal.NotConfiguredError
+	switch {
+	case errors.As(err, &nc),
+		errors.Is(err, gcal.ErrNotConnected),
+		errors.Is(err, gcal.ErrBroken),
+		errors.Is(err, gcal.ErrCalendarNotSet):
+		return false
+	}
+	return true
 }
 
 func (h *gcalHandlers) status(w http.ResponseWriter, r *http.Request) error {
@@ -147,6 +176,8 @@ func (h *gcalHandlers) callback(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, gcal.ErrInvalidState):
 			back("error", "state")
+		case errors.Is(err, gcal.ErrNotMember):
+			back("error", "membership")
 		default:
 			back("error", "failed")
 		}
