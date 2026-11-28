@@ -48,6 +48,8 @@ export type XGcalDisconnectResult = {
 export type XGcalSyncResult = {
   result: { inserted: number; patched: number; deleted: number; relinked: number; unchanged: number };
   status: XGcalStatus;
+  /** Set (with a 5xx status) when some entries synced and others failed. */
+  error?: string;
 };
 
 /** Error body shape of the custom API (same as upstream's). */

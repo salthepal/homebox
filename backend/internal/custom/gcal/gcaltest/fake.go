@@ -256,35 +256,45 @@ func (f *Fake) api(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodPatch:
-		var patch gcal.Event
+		// Real patch semantics: only the keys present in the body change. Objects merge
+		// recursively and arrays are replaced wholesale, so a client that omits a field
+		// (e.g. an empty description or reminder overrides) leaves the old value in place.
+		var patch map[string]any
 		if json.NewDecoder(r.Body).Decode(&patch) != nil {
 			gerr(w, http.StatusBadRequest, "invalid", "bad body")
 			return
 		}
-		if patch.Summary != "" {
-			cur.Summary = patch.Summary
+		raw, _ := json.Marshal(cur)
+		var merged map[string]any
+		_ = json.Unmarshal(raw, &merged)
+		mergePatch(merged, patch)
+		raw, _ = json.Marshal(merged)
+		var next gcal.Event
+		if json.Unmarshal(raw, &next) != nil {
+			gerr(w, http.StatusBadRequest, "invalid", "bad body")
+			return
 		}
-		if patch.Description != "" {
-			cur.Description = patch.Description
-		}
-		if patch.Start != nil {
-			cur.Start = patch.Start
-		}
-		if patch.End != nil {
-			cur.End = patch.End
-		}
-		if patch.Reminders != nil {
-			cur.Reminders = patch.Reminders
-		}
-		if patch.ExtendedProperties != nil {
-			cur.ExtendedProperties = patch.ExtendedProperties
-		}
-		evs[eid] = cur
-		writeJSON(w, http.StatusOK, cur)
+		next.ID = cur.ID
+		evs[eid] = next
+		writeJSON(w, http.StatusOK, next)
 	case http.MethodDelete:
 		delete(evs, eid)
 		w.WriteHeader(http.StatusNoContent)
 	default:
 		gerr(w, http.StatusMethodNotAllowed, "invalid", "method")
+	}
+}
+
+// mergePatch applies Google-style patch semantics: keys in src overwrite keys in dst, nested
+// objects merge recursively, everything else (including arrays) is replaced.
+func mergePatch(dst, src map[string]any) {
+	for k, v := range src {
+		sv, srcIsObj := v.(map[string]any)
+		dv, dstIsObj := dst[k].(map[string]any)
+		if srcIsObj && dstIsObj {
+			mergePatch(dv, sv)
+			continue
+		}
+		dst[k] = v
 	}
 }

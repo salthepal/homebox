@@ -170,6 +170,7 @@
       "sync_now": "Sync now",
       "syncing": "Syncing…",
       "synced": "Calendar synced: {added} added, {updated} updated, {removed} removed",
+      "synced_partial": "Partly synced ({added} added, {updated} updated, {removed} removed), but some entries failed: {error}",
       "synced_nothing": "Calendar is up to date",
       "sync_failed": "Sync failed",
       "disconnect": "Disconnect",

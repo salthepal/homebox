@@ -174,6 +174,20 @@
     const resp = await api.gcalSync();
     syncing.value = false;
     if (resp.error) {
+      const partial = resp.data?.result;
+      if (partial && resp.data.status) {
+        // Some entries synced and others failed: say what was done and what went wrong.
+        toast.warning(
+          t("x.calendar.synced_partial", {
+            added: partial.inserted,
+            updated: partial.patched,
+            removed: partial.deleted,
+            error: resp.data.error ?? t("x.calendar.sync_failed"),
+          })
+        );
+        status.value = resp.data.status;
+        return;
+      }
       toast.error(resp.data?.error ?? t("x.calendar.sync_failed"));
       // A failed or broken sync is recorded server-side: refresh to show last error / Reconnect.
       await loadStatus(false);
