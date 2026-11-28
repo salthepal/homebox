@@ -5,9 +5,123 @@
     },
     "projects": {
       "title": "Projects",
-      "coming_soon": "Multi-step upgrade projects are coming soon.",
+      "subtitle": "Multi-step upgrades, tracked from idea to done.",
       "backend_ok": "Custom backend connected",
-      "backend_error": "Custom backend not reachable"
+      "backend_error": "Custom backend not reachable",
+      "new": "New project",
+      "edit": "Edit project",
+      "none_in_status": "No projects",
+      "empty": "No projects yet. Create one to start planning an upgrade.",
+      "load_error": "Could not load projects.",
+      "not_found": "Project not found.",
+      "back": "All projects",
+      "status": {
+        "idea": "Idea",
+        "planning": "Planning",
+        "in_progress": "In progress",
+        "on_hold": "On hold",
+        "done": "Done",
+        "cancelled": "Cancelled"
+      },
+      "priority": {
+        "label": "Priority",
+        "0": "None",
+        "1": "Low",
+        "2": "Medium",
+        "3": "High"
+      },
+      "form": {
+        "name": "Name",
+        "description": "Description",
+        "status": "Status",
+        "target_date": "Target date",
+        "budget": "Budget",
+        "save": "Save",
+        "create": "Create project",
+        "cancel": "Cancel"
+      },
+      "card": {
+        "progress": "{done}/{total} steps",
+        "no_steps": "No steps yet",
+        "cost": "{actual} of {budget}",
+        "cost_no_budget": "{actual} spent",
+        "target": "Target {date}"
+      },
+      "toast": {
+        "created": "Project created",
+        "updated": "Project updated",
+        "deleted": "Project deleted",
+        "failed": "Something went wrong. Please try again."
+      },
+      "detail": {
+        "budget": "Budget",
+        "estimated": "Estimated",
+        "actual": "Spent",
+        "over_budget": "Over budget",
+        "target_date": "Target date",
+        "started": "Started {date}",
+        "completed": "Completed {date}",
+        "delete": "Delete project",
+        "delete_title": "Delete this project?",
+        "delete_body": "This removes the project and all of its steps. Maintenance entries already logged are kept.",
+        "delete_confirm": "Delete",
+        "all_done_title": "All steps are finished",
+        "all_done_body": "Mark this project as done?",
+        "mark_done": "Mark done",
+        "dismiss": "Not yet"
+      },
+      "items": {
+        "title": "Linked items",
+        "none": "No items linked.",
+        "add": "Link an item",
+        "search": "Search items…",
+        "no_results": "No matching items",
+        "remove": "Unlink"
+      },
+      "steps": {
+        "title": "Steps",
+        "empty": "No steps yet. Add the first one.",
+        "add": "Add step",
+        "edit": "Edit step",
+        "delete": "Delete step",
+        "move_up": "Move up",
+        "move_down": "Move down",
+        "complete": "Complete",
+        "reopen": "Reopen",
+        "due": "Due {date}",
+        "est": "Est. {cost}",
+        "actual": "Spent {cost}",
+        "logged": "Logged as maintenance",
+        "status": {
+          "todo": "To do",
+          "doing": "Doing",
+          "blocked": "Blocked",
+          "done": "Done",
+          "skipped": "Skipped"
+        },
+        "form": {
+          "title": "Title",
+          "notes": "Notes",
+          "status": "Status",
+          "due_date": "Due date",
+          "est_cost": "Estimated cost",
+          "actual_cost": "Actual cost",
+          "url": "Link (store page, guide…)",
+          "item": "Item this step is for",
+          "no_item": "No item",
+          "log_as_maintenance": "Log as maintenance when completed",
+          "save": "Save step",
+          "add": "Add step"
+        },
+        "complete_dialog": {
+          "title": "Complete step",
+          "actual_cost": "Actual cost",
+          "log_as_maintenance": "Log as maintenance entry",
+          "log_hint": "Adds an entry to {item}'s maintenance log.",
+          "log_needs_item": "Link this step to an item to log it as maintenance.",
+          "confirm": "Mark complete"
+        }
+      }
     }
   }
 }
