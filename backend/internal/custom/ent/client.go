@@ -16,6 +16,8 @@ import (
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xgcalconnection"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xgcallink"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xmeta"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xproject"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xprojectstep"
@@ -26,6 +28,10 @@ type Client struct {
 	config
 	// Schema is the client for creating, migrating and dropping schema.
 	Schema *migrate.Schema
+	// XGcalConnection is the client for interacting with the XGcalConnection builders.
+	XGcalConnection *XGcalConnectionClient
+	// XGcalLink is the client for interacting with the XGcalLink builders.
+	XGcalLink *XGcalLinkClient
 	// XMeta is the client for interacting with the XMeta builders.
 	XMeta *XMetaClient
 	// XProject is the client for interacting with the XProject builders.
@@ -43,6 +49,8 @@ func NewClient(opts ...Option) *Client {
 
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
+	c.XGcalConnection = NewXGcalConnectionClient(c.config)
+	c.XGcalLink = NewXGcalLinkClient(c.config)
 	c.XMeta = NewXMetaClient(c.config)
 	c.XProject = NewXProjectClient(c.config)
 	c.XProjectStep = NewXProjectStepClient(c.config)
@@ -136,11 +144,13 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:          ctx,
-		config:       cfg,
-		XMeta:        NewXMetaClient(cfg),
-		XProject:     NewXProjectClient(cfg),
-		XProjectStep: NewXProjectStepClient(cfg),
+		ctx:             ctx,
+		config:          cfg,
+		XGcalConnection: NewXGcalConnectionClient(cfg),
+		XGcalLink:       NewXGcalLinkClient(cfg),
+		XMeta:           NewXMetaClient(cfg),
+		XProject:        NewXProjectClient(cfg),
+		XProjectStep:    NewXProjectStepClient(cfg),
 	}, nil
 }
 
@@ -158,18 +168,20 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:          ctx,
-		config:       cfg,
-		XMeta:        NewXMetaClient(cfg),
-		XProject:     NewXProjectClient(cfg),
-		XProjectStep: NewXProjectStepClient(cfg),
+		ctx:             ctx,
+		config:          cfg,
+		XGcalConnection: NewXGcalConnectionClient(cfg),
+		XGcalLink:       NewXGcalLinkClient(cfg),
+		XMeta:           NewXMetaClient(cfg),
+		XProject:        NewXProjectClient(cfg),
+		XProjectStep:    NewXProjectStepClient(cfg),
 	}, nil
 }
 
 // Debug returns a new debug-client. It's used to get verbose logging on specific operations.
 //
 //	client.Debug().
-//		XMeta.
+//		XGcalConnection.
 //		Query().
 //		Count(ctx)
 func (c *Client) Debug() *Client {
@@ -191,6 +203,8 @@ func (c *Client) Close() error {
 // Use adds the mutation hooks to all the entity clients.
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
+	c.XGcalConnection.Use(hooks...)
+	c.XGcalLink.Use(hooks...)
 	c.XMeta.Use(hooks...)
 	c.XProject.Use(hooks...)
 	c.XProjectStep.Use(hooks...)
@@ -199,6 +213,8 @@ func (c *Client) Use(hooks ...Hook) {
 // Intercept adds the query interceptors to all the entity clients.
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
+	c.XGcalConnection.Intercept(interceptors...)
+	c.XGcalLink.Intercept(interceptors...)
 	c.XMeta.Intercept(interceptors...)
 	c.XProject.Intercept(interceptors...)
 	c.XProjectStep.Intercept(interceptors...)
@@ -207,6 +223,10 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 // Mutate implements the ent.Mutator interface.
 func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
+	case *XGcalConnectionMutation:
+		return c.XGcalConnection.mutate(ctx, m)
+	case *XGcalLinkMutation:
+		return c.XGcalLink.mutate(ctx, m)
 	case *XMetaMutation:
 		return c.XMeta.mutate(ctx, m)
 	case *XProjectMutation:
@@ -215,6 +235,272 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.XProjectStep.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
+	}
+}
+
+// XGcalConnectionClient is a client for the XGcalConnection schema.
+type XGcalConnectionClient struct {
+	config
+}
+
+// NewXGcalConnectionClient returns a client for the XGcalConnection from the given config.
+func NewXGcalConnectionClient(c config) *XGcalConnectionClient {
+	return &XGcalConnectionClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `xgcalconnection.Hooks(f(g(h())))`.
+func (c *XGcalConnectionClient) Use(hooks ...Hook) {
+	c.hooks.XGcalConnection = append(c.hooks.XGcalConnection, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `xgcalconnection.Intercept(f(g(h())))`.
+func (c *XGcalConnectionClient) Intercept(interceptors ...Interceptor) {
+	c.inters.XGcalConnection = append(c.inters.XGcalConnection, interceptors...)
+}
+
+// Create returns a builder for creating a XGcalConnection entity.
+func (c *XGcalConnectionClient) Create() *XGcalConnectionCreate {
+	mutation := newXGcalConnectionMutation(c.config, OpCreate)
+	return &XGcalConnectionCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of XGcalConnection entities.
+func (c *XGcalConnectionClient) CreateBulk(builders ...*XGcalConnectionCreate) *XGcalConnectionCreateBulk {
+	return &XGcalConnectionCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *XGcalConnectionClient) MapCreateBulk(slice any, setFunc func(*XGcalConnectionCreate, int)) *XGcalConnectionCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &XGcalConnectionCreateBulk{err: fmt.Errorf("calling to XGcalConnectionClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*XGcalConnectionCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &XGcalConnectionCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for XGcalConnection.
+func (c *XGcalConnectionClient) Update() *XGcalConnectionUpdate {
+	mutation := newXGcalConnectionMutation(c.config, OpUpdate)
+	return &XGcalConnectionUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *XGcalConnectionClient) UpdateOne(_m *XGcalConnection) *XGcalConnectionUpdateOne {
+	mutation := newXGcalConnectionMutation(c.config, OpUpdateOne, withXGcalConnection(_m))
+	return &XGcalConnectionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *XGcalConnectionClient) UpdateOneID(id uuid.UUID) *XGcalConnectionUpdateOne {
+	mutation := newXGcalConnectionMutation(c.config, OpUpdateOne, withXGcalConnectionID(id))
+	return &XGcalConnectionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for XGcalConnection.
+func (c *XGcalConnectionClient) Delete() *XGcalConnectionDelete {
+	mutation := newXGcalConnectionMutation(c.config, OpDelete)
+	return &XGcalConnectionDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *XGcalConnectionClient) DeleteOne(_m *XGcalConnection) *XGcalConnectionDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *XGcalConnectionClient) DeleteOneID(id uuid.UUID) *XGcalConnectionDeleteOne {
+	builder := c.Delete().Where(xgcalconnection.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &XGcalConnectionDeleteOne{builder}
+}
+
+// Query returns a query builder for XGcalConnection.
+func (c *XGcalConnectionClient) Query() *XGcalConnectionQuery {
+	return &XGcalConnectionQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeXGcalConnection},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a XGcalConnection entity by its id.
+func (c *XGcalConnectionClient) Get(ctx context.Context, id uuid.UUID) (*XGcalConnection, error) {
+	return c.Query().Where(xgcalconnection.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *XGcalConnectionClient) GetX(ctx context.Context, id uuid.UUID) *XGcalConnection {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *XGcalConnectionClient) Hooks() []Hook {
+	return c.hooks.XGcalConnection
+}
+
+// Interceptors returns the client interceptors.
+func (c *XGcalConnectionClient) Interceptors() []Interceptor {
+	return c.inters.XGcalConnection
+}
+
+func (c *XGcalConnectionClient) mutate(ctx context.Context, m *XGcalConnectionMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&XGcalConnectionCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&XGcalConnectionUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&XGcalConnectionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&XGcalConnectionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown XGcalConnection mutation op: %q", m.Op())
+	}
+}
+
+// XGcalLinkClient is a client for the XGcalLink schema.
+type XGcalLinkClient struct {
+	config
+}
+
+// NewXGcalLinkClient returns a client for the XGcalLink from the given config.
+func NewXGcalLinkClient(c config) *XGcalLinkClient {
+	return &XGcalLinkClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `xgcallink.Hooks(f(g(h())))`.
+func (c *XGcalLinkClient) Use(hooks ...Hook) {
+	c.hooks.XGcalLink = append(c.hooks.XGcalLink, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `xgcallink.Intercept(f(g(h())))`.
+func (c *XGcalLinkClient) Intercept(interceptors ...Interceptor) {
+	c.inters.XGcalLink = append(c.inters.XGcalLink, interceptors...)
+}
+
+// Create returns a builder for creating a XGcalLink entity.
+func (c *XGcalLinkClient) Create() *XGcalLinkCreate {
+	mutation := newXGcalLinkMutation(c.config, OpCreate)
+	return &XGcalLinkCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of XGcalLink entities.
+func (c *XGcalLinkClient) CreateBulk(builders ...*XGcalLinkCreate) *XGcalLinkCreateBulk {
+	return &XGcalLinkCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *XGcalLinkClient) MapCreateBulk(slice any, setFunc func(*XGcalLinkCreate, int)) *XGcalLinkCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &XGcalLinkCreateBulk{err: fmt.Errorf("calling to XGcalLinkClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*XGcalLinkCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &XGcalLinkCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for XGcalLink.
+func (c *XGcalLinkClient) Update() *XGcalLinkUpdate {
+	mutation := newXGcalLinkMutation(c.config, OpUpdate)
+	return &XGcalLinkUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *XGcalLinkClient) UpdateOne(_m *XGcalLink) *XGcalLinkUpdateOne {
+	mutation := newXGcalLinkMutation(c.config, OpUpdateOne, withXGcalLink(_m))
+	return &XGcalLinkUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *XGcalLinkClient) UpdateOneID(id uuid.UUID) *XGcalLinkUpdateOne {
+	mutation := newXGcalLinkMutation(c.config, OpUpdateOne, withXGcalLinkID(id))
+	return &XGcalLinkUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for XGcalLink.
+func (c *XGcalLinkClient) Delete() *XGcalLinkDelete {
+	mutation := newXGcalLinkMutation(c.config, OpDelete)
+	return &XGcalLinkDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *XGcalLinkClient) DeleteOne(_m *XGcalLink) *XGcalLinkDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *XGcalLinkClient) DeleteOneID(id uuid.UUID) *XGcalLinkDeleteOne {
+	builder := c.Delete().Where(xgcallink.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &XGcalLinkDeleteOne{builder}
+}
+
+// Query returns a query builder for XGcalLink.
+func (c *XGcalLinkClient) Query() *XGcalLinkQuery {
+	return &XGcalLinkQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeXGcalLink},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a XGcalLink entity by its id.
+func (c *XGcalLinkClient) Get(ctx context.Context, id uuid.UUID) (*XGcalLink, error) {
+	return c.Query().Where(xgcallink.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *XGcalLinkClient) GetX(ctx context.Context, id uuid.UUID) *XGcalLink {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *XGcalLinkClient) Hooks() []Hook {
+	return c.hooks.XGcalLink
+}
+
+// Interceptors returns the client interceptors.
+func (c *XGcalLinkClient) Interceptors() []Interceptor {
+	return c.inters.XGcalLink
+}
+
+func (c *XGcalLinkClient) mutate(ctx context.Context, m *XGcalLinkMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&XGcalLinkCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&XGcalLinkUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&XGcalLinkUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&XGcalLinkDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown XGcalLink mutation op: %q", m.Op())
 	}
 }
 
@@ -652,9 +938,9 @@ func (c *XProjectStepClient) mutate(ctx context.Context, m *XProjectStepMutation
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		XMeta, XProject, XProjectStep []ent.Hook
+		XGcalConnection, XGcalLink, XMeta, XProject, XProjectStep []ent.Hook
 	}
 	inters struct {
-		XMeta, XProject, XProjectStep []ent.Interceptor
+		XGcalConnection, XGcalLink, XMeta, XProject, XProjectStep []ent.Interceptor
 	}
 )

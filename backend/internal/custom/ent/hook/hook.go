@@ -9,6 +9,30 @@ import (
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent"
 )
 
+// The XGcalConnectionFunc type is an adapter to allow the use of ordinary
+// function as XGcalConnection mutator.
+type XGcalConnectionFunc func(context.Context, *ent.XGcalConnectionMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f XGcalConnectionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.XGcalConnectionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.XGcalConnectionMutation", m)
+}
+
+// The XGcalLinkFunc type is an adapter to allow the use of ordinary
+// function as XGcalLink mutator.
+type XGcalLinkFunc func(context.Context, *ent.XGcalLinkMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f XGcalLinkFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.XGcalLinkMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.XGcalLinkMutation", m)
+}
+
 // The XMetaFunc type is an adapter to allow the use of ordinary
 // function as XMeta mutator.
 type XMetaFunc func(context.Context, *ent.XMetaMutation) (ent.Value, error)

@@ -14,6 +14,7 @@ import (
 	"github.com/sysadminsmedia/homebox/backend/internal/core/services"
 	xconfig "github.com/sysadminsmedia/homebox/backend/internal/custom/config"
 	xent "github.com/sysadminsmedia/homebox/backend/internal/custom/ent"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/gcal"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/projects"
 )
 
@@ -21,6 +22,8 @@ import (
 type Deps struct {
 	Ent    *xent.Client
 	Config xconfig.Config
+	// Gcal overrides Google endpoints (tests point these at a fake); zero = real Google.
+	Gcal gcal.Options
 
 	Projects *projects.Service // Feature 1 (P2)
 }
@@ -29,6 +32,7 @@ type Deps struct {
 // middleware stack (auth token, tenant, user role).
 func Mount(r chi.Router, chain *errchain.ErrChain, userMW []errchain.Middleware, d Deps) {
 	r.Get("/ping", chain.ToHandlerFunc(handlePing(d), userMW...))
+	mountGcal(r, chain, userMW, d)
 	mountProjects(r, chain, userMW, d)
 }
 

@@ -8,6 +8,45 @@ export type XPing = {
   schema: string;
 };
 
+// ---- Google Calendar types (G1) ----
+export type XGcalStatus = {
+  enabled: boolean;
+  missing: string[];
+  redirect_uri: string;
+  connected: boolean;
+  broken: boolean;
+  google_email: string;
+  calendar_id: string;
+  calendar_summary: string;
+  include_completed: boolean;
+  include_project_steps: boolean;
+  reminder_minutes: number;
+  last_sync_at: string | null;
+  last_error: string;
+};
+
+export type XGcalCalendar = {
+  id: string;
+  summary: string;
+  accessRole: string;
+  primary?: boolean;
+};
+
+export type XGcalSettings = {
+  calendar_id?: string;
+  include_completed?: boolean;
+  include_project_steps?: boolean;
+  reminder_minutes?: number;
+};
+
+export type XGcalDisconnectResult = {
+  removed_events: number;
+  remove_skipped: boolean;
+};
+
+/** Error body shape of the custom API (same as upstream's). */
+export type XError = { error?: string };
+
 // ---- Projects (P1-P4) ----------------------------------------------------------------
 // Dates are "YYYY-MM-DD" strings (or RFC3339 from the server; use toDateInput in lib/projects.ts).
 export type XProjectStatus = "idea" | "planning" | "in_progress" | "on_hold" | "done" | "cancelled";
@@ -83,6 +122,31 @@ export type XCompleteStepInput = {
 export class CustomApi extends BaseAPI {
   ping() {
     return this.http.get<XPing>({ url: route("/x/ping") });
+  }
+
+  // ---- Google Calendar (G1) ----
+  gcalStatus() {
+    return this.http.get<XGcalStatus>({ url: route("/x/gcal/status") });
+  }
+
+  /** Returns the Google consent URL to send the browser to. */
+  gcalConnect() {
+    return this.http.post<undefined, { url: string } & XError>({ url: route("/x/gcal/connect") });
+  }
+
+  gcalCalendars() {
+    return this.http.get<{ calendars: XGcalCalendar[] } & XError>({ url: route("/x/gcal/calendars") });
+  }
+
+  gcalSaveSettings(body: XGcalSettings) {
+    return this.http.put<XGcalSettings, XGcalStatus & XError>({ url: route("/x/gcal/settings"), body });
+  }
+
+  gcalDisconnect(removeEvents: boolean) {
+    return this.http.post<{ remove_events: boolean }, XGcalDisconnectResult & XError>({
+      url: route("/x/gcal/disconnect"),
+      body: { remove_events: removeEvents },
+    });
   }
 
   // -- projects --

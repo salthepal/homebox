@@ -3,6 +3,7 @@
 import type { Component, ComputedRef } from "vue";
 import type { RouteLocationNormalizedLoaded } from "vue-router";
 import MdiClipboardListOutline from "~icons/mdi/clipboard-list-outline";
+import MdiCalendarSync from "~icons/mdi/calendar-sync";
 
 export type CustomNavItem = {
   icon: Component;
@@ -20,6 +21,13 @@ export function customNavItems(t: (key: string) => string, route: RouteLocationN
       active: computed(() => route.path.startsWith("/x/projects")),
       name: computed(() => t("x.menu.projects")),
       to: "/x/projects",
+    },
+    {
+      icon: MdiCalendarSync,
+      id: 101,
+      active: computed(() => route.path.startsWith("/x/calendar")),
+      name: computed(() => t("x.menu.calendar")),
+      to: "/x/calendar",
     },
   ];
 }

@@ -13,6 +13,8 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/predicate"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xgcalconnection"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xgcallink"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xmeta"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xproject"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xprojectstep"
@@ -27,10 +29,1652 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
-	TypeXMeta        = "XMeta"
-	TypeXProject     = "XProject"
-	TypeXProjectStep = "XProjectStep"
+	TypeXGcalConnection = "XGcalConnection"
+	TypeXGcalLink       = "XGcalLink"
+	TypeXMeta           = "XMeta"
+	TypeXProject        = "XProject"
+	TypeXProjectStep    = "XProjectStep"
 )
+
+// XGcalConnectionMutation represents an operation that mutates the XGcalConnection nodes in the graph.
+type XGcalConnectionMutation struct {
+	config
+	op                    Op
+	typ                   string
+	id                    *uuid.UUID
+	connected_by          *uuid.UUID
+	google_email          *string
+	calendar_id           *string
+	calendar_summary      *string
+	enc_refresh_token     *[]byte
+	include_completed     *bool
+	include_project_steps *bool
+	reminder_minutes      *int
+	addreminder_minutes   *int
+	broken                *bool
+	last_sync_at          *time.Time
+	last_error            *string
+	created_at            *time.Time
+	updated_at            *time.Time
+	clearedFields         map[string]struct{}
+	done                  bool
+	oldValue              func(context.Context) (*XGcalConnection, error)
+	predicates            []predicate.XGcalConnection
+}
+
+var _ ent.Mutation = (*XGcalConnectionMutation)(nil)
+
+// xgcalconnectionOption allows management of the mutation configuration using functional options.
+type xgcalconnectionOption func(*XGcalConnectionMutation)
+
+// newXGcalConnectionMutation creates new mutation for the XGcalConnection entity.
+func newXGcalConnectionMutation(c config, op Op, opts ...xgcalconnectionOption) *XGcalConnectionMutation {
+	m := &XGcalConnectionMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeXGcalConnection,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withXGcalConnectionID sets the ID field of the mutation.
+func withXGcalConnectionID(id uuid.UUID) xgcalconnectionOption {
+	return func(m *XGcalConnectionMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *XGcalConnection
+		)
+		m.oldValue = func(ctx context.Context) (*XGcalConnection, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().XGcalConnection.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withXGcalConnection sets the old XGcalConnection of the mutation.
+func withXGcalConnection(node *XGcalConnection) xgcalconnectionOption {
+	return func(m *XGcalConnectionMutation) {
+		m.oldValue = func(context.Context) (*XGcalConnection, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m XGcalConnectionMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m XGcalConnectionMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of XGcalConnection entities.
+func (m *XGcalConnectionMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *XGcalConnectionMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *XGcalConnectionMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().XGcalConnection.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetConnectedBy sets the "connected_by" field.
+func (m *XGcalConnectionMutation) SetConnectedBy(u uuid.UUID) {
+	m.connected_by = &u
+}
+
+// ConnectedBy returns the value of the "connected_by" field in the mutation.
+func (m *XGcalConnectionMutation) ConnectedBy() (r uuid.UUID, exists bool) {
+	v := m.connected_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldConnectedBy returns the old "connected_by" field's value of the XGcalConnection entity.
+// If the XGcalConnection object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XGcalConnectionMutation) OldConnectedBy(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldConnectedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldConnectedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldConnectedBy: %w", err)
+	}
+	return oldValue.ConnectedBy, nil
+}
+
+// ResetConnectedBy resets all changes to the "connected_by" field.
+func (m *XGcalConnectionMutation) ResetConnectedBy() {
+	m.connected_by = nil
+}
+
+// SetGoogleEmail sets the "google_email" field.
+func (m *XGcalConnectionMutation) SetGoogleEmail(s string) {
+	m.google_email = &s
+}
+
+// GoogleEmail returns the value of the "google_email" field in the mutation.
+func (m *XGcalConnectionMutation) GoogleEmail() (r string, exists bool) {
+	v := m.google_email
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGoogleEmail returns the old "google_email" field's value of the XGcalConnection entity.
+// If the XGcalConnection object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XGcalConnectionMutation) OldGoogleEmail(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGoogleEmail is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGoogleEmail requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGoogleEmail: %w", err)
+	}
+	return oldValue.GoogleEmail, nil
+}
+
+// ResetGoogleEmail resets all changes to the "google_email" field.
+func (m *XGcalConnectionMutation) ResetGoogleEmail() {
+	m.google_email = nil
+}
+
+// SetCalendarID sets the "calendar_id" field.
+func (m *XGcalConnectionMutation) SetCalendarID(s string) {
+	m.calendar_id = &s
+}
+
+// CalendarID returns the value of the "calendar_id" field in the mutation.
+func (m *XGcalConnectionMutation) CalendarID() (r string, exists bool) {
+	v := m.calendar_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCalendarID returns the old "calendar_id" field's value of the XGcalConnection entity.
+// If the XGcalConnection object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XGcalConnectionMutation) OldCalendarID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCalendarID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCalendarID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCalendarID: %w", err)
+	}
+	return oldValue.CalendarID, nil
+}
+
+// ResetCalendarID resets all changes to the "calendar_id" field.
+func (m *XGcalConnectionMutation) ResetCalendarID() {
+	m.calendar_id = nil
+}
+
+// SetCalendarSummary sets the "calendar_summary" field.
+func (m *XGcalConnectionMutation) SetCalendarSummary(s string) {
+	m.calendar_summary = &s
+}
+
+// CalendarSummary returns the value of the "calendar_summary" field in the mutation.
+func (m *XGcalConnectionMutation) CalendarSummary() (r string, exists bool) {
+	v := m.calendar_summary
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCalendarSummary returns the old "calendar_summary" field's value of the XGcalConnection entity.
+// If the XGcalConnection object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XGcalConnectionMutation) OldCalendarSummary(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCalendarSummary is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCalendarSummary requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCalendarSummary: %w", err)
+	}
+	return oldValue.CalendarSummary, nil
+}
+
+// ResetCalendarSummary resets all changes to the "calendar_summary" field.
+func (m *XGcalConnectionMutation) ResetCalendarSummary() {
+	m.calendar_summary = nil
+}
+
+// SetEncRefreshToken sets the "enc_refresh_token" field.
+func (m *XGcalConnectionMutation) SetEncRefreshToken(b []byte) {
+	m.enc_refresh_token = &b
+}
+
+// EncRefreshToken returns the value of the "enc_refresh_token" field in the mutation.
+func (m *XGcalConnectionMutation) EncRefreshToken() (r []byte, exists bool) {
+	v := m.enc_refresh_token
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEncRefreshToken returns the old "enc_refresh_token" field's value of the XGcalConnection entity.
+// If the XGcalConnection object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XGcalConnectionMutation) OldEncRefreshToken(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEncRefreshToken is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEncRefreshToken requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEncRefreshToken: %w", err)
+	}
+	return oldValue.EncRefreshToken, nil
+}
+
+// ResetEncRefreshToken resets all changes to the "enc_refresh_token" field.
+func (m *XGcalConnectionMutation) ResetEncRefreshToken() {
+	m.enc_refresh_token = nil
+}
+
+// SetIncludeCompleted sets the "include_completed" field.
+func (m *XGcalConnectionMutation) SetIncludeCompleted(b bool) {
+	m.include_completed = &b
+}
+
+// IncludeCompleted returns the value of the "include_completed" field in the mutation.
+func (m *XGcalConnectionMutation) IncludeCompleted() (r bool, exists bool) {
+	v := m.include_completed
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIncludeCompleted returns the old "include_completed" field's value of the XGcalConnection entity.
+// If the XGcalConnection object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XGcalConnectionMutation) OldIncludeCompleted(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIncludeCompleted is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIncludeCompleted requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIncludeCompleted: %w", err)
+	}
+	return oldValue.IncludeCompleted, nil
+}
+
+// ResetIncludeCompleted resets all changes to the "include_completed" field.
+func (m *XGcalConnectionMutation) ResetIncludeCompleted() {
+	m.include_completed = nil
+}
+
+// SetIncludeProjectSteps sets the "include_project_steps" field.
+func (m *XGcalConnectionMutation) SetIncludeProjectSteps(b bool) {
+	m.include_project_steps = &b
+}
+
+// IncludeProjectSteps returns the value of the "include_project_steps" field in the mutation.
+func (m *XGcalConnectionMutation) IncludeProjectSteps() (r bool, exists bool) {
+	v := m.include_project_steps
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIncludeProjectSteps returns the old "include_project_steps" field's value of the XGcalConnection entity.
+// If the XGcalConnection object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XGcalConnectionMutation) OldIncludeProjectSteps(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIncludeProjectSteps is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIncludeProjectSteps requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIncludeProjectSteps: %w", err)
+	}
+	return oldValue.IncludeProjectSteps, nil
+}
+
+// ResetIncludeProjectSteps resets all changes to the "include_project_steps" field.
+func (m *XGcalConnectionMutation) ResetIncludeProjectSteps() {
+	m.include_project_steps = nil
+}
+
+// SetReminderMinutes sets the "reminder_minutes" field.
+func (m *XGcalConnectionMutation) SetReminderMinutes(i int) {
+	m.reminder_minutes = &i
+	m.addreminder_minutes = nil
+}
+
+// ReminderMinutes returns the value of the "reminder_minutes" field in the mutation.
+func (m *XGcalConnectionMutation) ReminderMinutes() (r int, exists bool) {
+	v := m.reminder_minutes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReminderMinutes returns the old "reminder_minutes" field's value of the XGcalConnection entity.
+// If the XGcalConnection object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XGcalConnectionMutation) OldReminderMinutes(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReminderMinutes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReminderMinutes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReminderMinutes: %w", err)
+	}
+	return oldValue.ReminderMinutes, nil
+}
+
+// AddReminderMinutes adds i to the "reminder_minutes" field.
+func (m *XGcalConnectionMutation) AddReminderMinutes(i int) {
+	if m.addreminder_minutes != nil {
+		*m.addreminder_minutes += i
+	} else {
+		m.addreminder_minutes = &i
+	}
+}
+
+// AddedReminderMinutes returns the value that was added to the "reminder_minutes" field in this mutation.
+func (m *XGcalConnectionMutation) AddedReminderMinutes() (r int, exists bool) {
+	v := m.addreminder_minutes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetReminderMinutes resets all changes to the "reminder_minutes" field.
+func (m *XGcalConnectionMutation) ResetReminderMinutes() {
+	m.reminder_minutes = nil
+	m.addreminder_minutes = nil
+}
+
+// SetBroken sets the "broken" field.
+func (m *XGcalConnectionMutation) SetBroken(b bool) {
+	m.broken = &b
+}
+
+// Broken returns the value of the "broken" field in the mutation.
+func (m *XGcalConnectionMutation) Broken() (r bool, exists bool) {
+	v := m.broken
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBroken returns the old "broken" field's value of the XGcalConnection entity.
+// If the XGcalConnection object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XGcalConnectionMutation) OldBroken(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBroken is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBroken requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBroken: %w", err)
+	}
+	return oldValue.Broken, nil
+}
+
+// ResetBroken resets all changes to the "broken" field.
+func (m *XGcalConnectionMutation) ResetBroken() {
+	m.broken = nil
+}
+
+// SetLastSyncAt sets the "last_sync_at" field.
+func (m *XGcalConnectionMutation) SetLastSyncAt(t time.Time) {
+	m.last_sync_at = &t
+}
+
+// LastSyncAt returns the value of the "last_sync_at" field in the mutation.
+func (m *XGcalConnectionMutation) LastSyncAt() (r time.Time, exists bool) {
+	v := m.last_sync_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastSyncAt returns the old "last_sync_at" field's value of the XGcalConnection entity.
+// If the XGcalConnection object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XGcalConnectionMutation) OldLastSyncAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastSyncAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastSyncAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastSyncAt: %w", err)
+	}
+	return oldValue.LastSyncAt, nil
+}
+
+// ClearLastSyncAt clears the value of the "last_sync_at" field.
+func (m *XGcalConnectionMutation) ClearLastSyncAt() {
+	m.last_sync_at = nil
+	m.clearedFields[xgcalconnection.FieldLastSyncAt] = struct{}{}
+}
+
+// LastSyncAtCleared returns if the "last_sync_at" field was cleared in this mutation.
+func (m *XGcalConnectionMutation) LastSyncAtCleared() bool {
+	_, ok := m.clearedFields[xgcalconnection.FieldLastSyncAt]
+	return ok
+}
+
+// ResetLastSyncAt resets all changes to the "last_sync_at" field.
+func (m *XGcalConnectionMutation) ResetLastSyncAt() {
+	m.last_sync_at = nil
+	delete(m.clearedFields, xgcalconnection.FieldLastSyncAt)
+}
+
+// SetLastError sets the "last_error" field.
+func (m *XGcalConnectionMutation) SetLastError(s string) {
+	m.last_error = &s
+}
+
+// LastError returns the value of the "last_error" field in the mutation.
+func (m *XGcalConnectionMutation) LastError() (r string, exists bool) {
+	v := m.last_error
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastError returns the old "last_error" field's value of the XGcalConnection entity.
+// If the XGcalConnection object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XGcalConnectionMutation) OldLastError(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastError is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastError requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastError: %w", err)
+	}
+	return oldValue.LastError, nil
+}
+
+// ResetLastError resets all changes to the "last_error" field.
+func (m *XGcalConnectionMutation) ResetLastError() {
+	m.last_error = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *XGcalConnectionMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *XGcalConnectionMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the XGcalConnection entity.
+// If the XGcalConnection object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XGcalConnectionMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *XGcalConnectionMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *XGcalConnectionMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *XGcalConnectionMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the XGcalConnection entity.
+// If the XGcalConnection object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XGcalConnectionMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *XGcalConnectionMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the XGcalConnectionMutation builder.
+func (m *XGcalConnectionMutation) Where(ps ...predicate.XGcalConnection) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the XGcalConnectionMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *XGcalConnectionMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.XGcalConnection, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *XGcalConnectionMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *XGcalConnectionMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (XGcalConnection).
+func (m *XGcalConnectionMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *XGcalConnectionMutation) Fields() []string {
+	fields := make([]string, 0, 13)
+	if m.connected_by != nil {
+		fields = append(fields, xgcalconnection.FieldConnectedBy)
+	}
+	if m.google_email != nil {
+		fields = append(fields, xgcalconnection.FieldGoogleEmail)
+	}
+	if m.calendar_id != nil {
+		fields = append(fields, xgcalconnection.FieldCalendarID)
+	}
+	if m.calendar_summary != nil {
+		fields = append(fields, xgcalconnection.FieldCalendarSummary)
+	}
+	if m.enc_refresh_token != nil {
+		fields = append(fields, xgcalconnection.FieldEncRefreshToken)
+	}
+	if m.include_completed != nil {
+		fields = append(fields, xgcalconnection.FieldIncludeCompleted)
+	}
+	if m.include_project_steps != nil {
+		fields = append(fields, xgcalconnection.FieldIncludeProjectSteps)
+	}
+	if m.reminder_minutes != nil {
+		fields = append(fields, xgcalconnection.FieldReminderMinutes)
+	}
+	if m.broken != nil {
+		fields = append(fields, xgcalconnection.FieldBroken)
+	}
+	if m.last_sync_at != nil {
+		fields = append(fields, xgcalconnection.FieldLastSyncAt)
+	}
+	if m.last_error != nil {
+		fields = append(fields, xgcalconnection.FieldLastError)
+	}
+	if m.created_at != nil {
+		fields = append(fields, xgcalconnection.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, xgcalconnection.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *XGcalConnectionMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case xgcalconnection.FieldConnectedBy:
+		return m.ConnectedBy()
+	case xgcalconnection.FieldGoogleEmail:
+		return m.GoogleEmail()
+	case xgcalconnection.FieldCalendarID:
+		return m.CalendarID()
+	case xgcalconnection.FieldCalendarSummary:
+		return m.CalendarSummary()
+	case xgcalconnection.FieldEncRefreshToken:
+		return m.EncRefreshToken()
+	case xgcalconnection.FieldIncludeCompleted:
+		return m.IncludeCompleted()
+	case xgcalconnection.FieldIncludeProjectSteps:
+		return m.IncludeProjectSteps()
+	case xgcalconnection.FieldReminderMinutes:
+		return m.ReminderMinutes()
+	case xgcalconnection.FieldBroken:
+		return m.Broken()
+	case xgcalconnection.FieldLastSyncAt:
+		return m.LastSyncAt()
+	case xgcalconnection.FieldLastError:
+		return m.LastError()
+	case xgcalconnection.FieldCreatedAt:
+		return m.CreatedAt()
+	case xgcalconnection.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *XGcalConnectionMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case xgcalconnection.FieldConnectedBy:
+		return m.OldConnectedBy(ctx)
+	case xgcalconnection.FieldGoogleEmail:
+		return m.OldGoogleEmail(ctx)
+	case xgcalconnection.FieldCalendarID:
+		return m.OldCalendarID(ctx)
+	case xgcalconnection.FieldCalendarSummary:
+		return m.OldCalendarSummary(ctx)
+	case xgcalconnection.FieldEncRefreshToken:
+		return m.OldEncRefreshToken(ctx)
+	case xgcalconnection.FieldIncludeCompleted:
+		return m.OldIncludeCompleted(ctx)
+	case xgcalconnection.FieldIncludeProjectSteps:
+		return m.OldIncludeProjectSteps(ctx)
+	case xgcalconnection.FieldReminderMinutes:
+		return m.OldReminderMinutes(ctx)
+	case xgcalconnection.FieldBroken:
+		return m.OldBroken(ctx)
+	case xgcalconnection.FieldLastSyncAt:
+		return m.OldLastSyncAt(ctx)
+	case xgcalconnection.FieldLastError:
+		return m.OldLastError(ctx)
+	case xgcalconnection.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case xgcalconnection.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown XGcalConnection field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *XGcalConnectionMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case xgcalconnection.FieldConnectedBy:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetConnectedBy(v)
+		return nil
+	case xgcalconnection.FieldGoogleEmail:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGoogleEmail(v)
+		return nil
+	case xgcalconnection.FieldCalendarID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCalendarID(v)
+		return nil
+	case xgcalconnection.FieldCalendarSummary:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCalendarSummary(v)
+		return nil
+	case xgcalconnection.FieldEncRefreshToken:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEncRefreshToken(v)
+		return nil
+	case xgcalconnection.FieldIncludeCompleted:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIncludeCompleted(v)
+		return nil
+	case xgcalconnection.FieldIncludeProjectSteps:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIncludeProjectSteps(v)
+		return nil
+	case xgcalconnection.FieldReminderMinutes:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReminderMinutes(v)
+		return nil
+	case xgcalconnection.FieldBroken:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBroken(v)
+		return nil
+	case xgcalconnection.FieldLastSyncAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastSyncAt(v)
+		return nil
+	case xgcalconnection.FieldLastError:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastError(v)
+		return nil
+	case xgcalconnection.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case xgcalconnection.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown XGcalConnection field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *XGcalConnectionMutation) AddedFields() []string {
+	var fields []string
+	if m.addreminder_minutes != nil {
+		fields = append(fields, xgcalconnection.FieldReminderMinutes)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *XGcalConnectionMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case xgcalconnection.FieldReminderMinutes:
+		return m.AddedReminderMinutes()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *XGcalConnectionMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case xgcalconnection.FieldReminderMinutes:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddReminderMinutes(v)
+		return nil
+	}
+	return fmt.Errorf("unknown XGcalConnection numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *XGcalConnectionMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(xgcalconnection.FieldLastSyncAt) {
+		fields = append(fields, xgcalconnection.FieldLastSyncAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *XGcalConnectionMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *XGcalConnectionMutation) ClearField(name string) error {
+	switch name {
+	case xgcalconnection.FieldLastSyncAt:
+		m.ClearLastSyncAt()
+		return nil
+	}
+	return fmt.Errorf("unknown XGcalConnection nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *XGcalConnectionMutation) ResetField(name string) error {
+	switch name {
+	case xgcalconnection.FieldConnectedBy:
+		m.ResetConnectedBy()
+		return nil
+	case xgcalconnection.FieldGoogleEmail:
+		m.ResetGoogleEmail()
+		return nil
+	case xgcalconnection.FieldCalendarID:
+		m.ResetCalendarID()
+		return nil
+	case xgcalconnection.FieldCalendarSummary:
+		m.ResetCalendarSummary()
+		return nil
+	case xgcalconnection.FieldEncRefreshToken:
+		m.ResetEncRefreshToken()
+		return nil
+	case xgcalconnection.FieldIncludeCompleted:
+		m.ResetIncludeCompleted()
+		return nil
+	case xgcalconnection.FieldIncludeProjectSteps:
+		m.ResetIncludeProjectSteps()
+		return nil
+	case xgcalconnection.FieldReminderMinutes:
+		m.ResetReminderMinutes()
+		return nil
+	case xgcalconnection.FieldBroken:
+		m.ResetBroken()
+		return nil
+	case xgcalconnection.FieldLastSyncAt:
+		m.ResetLastSyncAt()
+		return nil
+	case xgcalconnection.FieldLastError:
+		m.ResetLastError()
+		return nil
+	case xgcalconnection.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case xgcalconnection.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown XGcalConnection field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *XGcalConnectionMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *XGcalConnectionMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *XGcalConnectionMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *XGcalConnectionMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *XGcalConnectionMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *XGcalConnectionMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *XGcalConnectionMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown XGcalConnection unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *XGcalConnectionMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown XGcalConnection edge %s", name)
+}
+
+// XGcalLinkMutation represents an operation that mutates the XGcalLink nodes in the graph.
+type XGcalLinkMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *uuid.UUID
+	group_id      *uuid.UUID
+	source_type   *xgcallink.SourceType
+	source_id     *uuid.UUID
+	event_id      *string
+	content_hash  *string
+	synced_at     *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*XGcalLink, error)
+	predicates    []predicate.XGcalLink
+}
+
+var _ ent.Mutation = (*XGcalLinkMutation)(nil)
+
+// xgcallinkOption allows management of the mutation configuration using functional options.
+type xgcallinkOption func(*XGcalLinkMutation)
+
+// newXGcalLinkMutation creates new mutation for the XGcalLink entity.
+func newXGcalLinkMutation(c config, op Op, opts ...xgcallinkOption) *XGcalLinkMutation {
+	m := &XGcalLinkMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeXGcalLink,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withXGcalLinkID sets the ID field of the mutation.
+func withXGcalLinkID(id uuid.UUID) xgcallinkOption {
+	return func(m *XGcalLinkMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *XGcalLink
+		)
+		m.oldValue = func(ctx context.Context) (*XGcalLink, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().XGcalLink.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withXGcalLink sets the old XGcalLink of the mutation.
+func withXGcalLink(node *XGcalLink) xgcallinkOption {
+	return func(m *XGcalLinkMutation) {
+		m.oldValue = func(context.Context) (*XGcalLink, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m XGcalLinkMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m XGcalLinkMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of XGcalLink entities.
+func (m *XGcalLinkMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *XGcalLinkMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *XGcalLinkMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().XGcalLink.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetGroupID sets the "group_id" field.
+func (m *XGcalLinkMutation) SetGroupID(u uuid.UUID) {
+	m.group_id = &u
+}
+
+// GroupID returns the value of the "group_id" field in the mutation.
+func (m *XGcalLinkMutation) GroupID() (r uuid.UUID, exists bool) {
+	v := m.group_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGroupID returns the old "group_id" field's value of the XGcalLink entity.
+// If the XGcalLink object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XGcalLinkMutation) OldGroupID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGroupID: %w", err)
+	}
+	return oldValue.GroupID, nil
+}
+
+// ResetGroupID resets all changes to the "group_id" field.
+func (m *XGcalLinkMutation) ResetGroupID() {
+	m.group_id = nil
+}
+
+// SetSourceType sets the "source_type" field.
+func (m *XGcalLinkMutation) SetSourceType(xt xgcallink.SourceType) {
+	m.source_type = &xt
+}
+
+// SourceType returns the value of the "source_type" field in the mutation.
+func (m *XGcalLinkMutation) SourceType() (r xgcallink.SourceType, exists bool) {
+	v := m.source_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSourceType returns the old "source_type" field's value of the XGcalLink entity.
+// If the XGcalLink object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XGcalLinkMutation) OldSourceType(ctx context.Context) (v xgcallink.SourceType, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSourceType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSourceType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSourceType: %w", err)
+	}
+	return oldValue.SourceType, nil
+}
+
+// ResetSourceType resets all changes to the "source_type" field.
+func (m *XGcalLinkMutation) ResetSourceType() {
+	m.source_type = nil
+}
+
+// SetSourceID sets the "source_id" field.
+func (m *XGcalLinkMutation) SetSourceID(u uuid.UUID) {
+	m.source_id = &u
+}
+
+// SourceID returns the value of the "source_id" field in the mutation.
+func (m *XGcalLinkMutation) SourceID() (r uuid.UUID, exists bool) {
+	v := m.source_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSourceID returns the old "source_id" field's value of the XGcalLink entity.
+// If the XGcalLink object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XGcalLinkMutation) OldSourceID(ctx context.Context) (v uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSourceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSourceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSourceID: %w", err)
+	}
+	return oldValue.SourceID, nil
+}
+
+// ResetSourceID resets all changes to the "source_id" field.
+func (m *XGcalLinkMutation) ResetSourceID() {
+	m.source_id = nil
+}
+
+// SetEventID sets the "event_id" field.
+func (m *XGcalLinkMutation) SetEventID(s string) {
+	m.event_id = &s
+}
+
+// EventID returns the value of the "event_id" field in the mutation.
+func (m *XGcalLinkMutation) EventID() (r string, exists bool) {
+	v := m.event_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEventID returns the old "event_id" field's value of the XGcalLink entity.
+// If the XGcalLink object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XGcalLinkMutation) OldEventID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEventID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEventID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEventID: %w", err)
+	}
+	return oldValue.EventID, nil
+}
+
+// ResetEventID resets all changes to the "event_id" field.
+func (m *XGcalLinkMutation) ResetEventID() {
+	m.event_id = nil
+}
+
+// SetContentHash sets the "content_hash" field.
+func (m *XGcalLinkMutation) SetContentHash(s string) {
+	m.content_hash = &s
+}
+
+// ContentHash returns the value of the "content_hash" field in the mutation.
+func (m *XGcalLinkMutation) ContentHash() (r string, exists bool) {
+	v := m.content_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContentHash returns the old "content_hash" field's value of the XGcalLink entity.
+// If the XGcalLink object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XGcalLinkMutation) OldContentHash(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContentHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContentHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContentHash: %w", err)
+	}
+	return oldValue.ContentHash, nil
+}
+
+// ResetContentHash resets all changes to the "content_hash" field.
+func (m *XGcalLinkMutation) ResetContentHash() {
+	m.content_hash = nil
+}
+
+// SetSyncedAt sets the "synced_at" field.
+func (m *XGcalLinkMutation) SetSyncedAt(t time.Time) {
+	m.synced_at = &t
+}
+
+// SyncedAt returns the value of the "synced_at" field in the mutation.
+func (m *XGcalLinkMutation) SyncedAt() (r time.Time, exists bool) {
+	v := m.synced_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSyncedAt returns the old "synced_at" field's value of the XGcalLink entity.
+// If the XGcalLink object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *XGcalLinkMutation) OldSyncedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSyncedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSyncedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSyncedAt: %w", err)
+	}
+	return oldValue.SyncedAt, nil
+}
+
+// ResetSyncedAt resets all changes to the "synced_at" field.
+func (m *XGcalLinkMutation) ResetSyncedAt() {
+	m.synced_at = nil
+}
+
+// Where appends a list predicates to the XGcalLinkMutation builder.
+func (m *XGcalLinkMutation) Where(ps ...predicate.XGcalLink) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the XGcalLinkMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *XGcalLinkMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.XGcalLink, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *XGcalLinkMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *XGcalLinkMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (XGcalLink).
+func (m *XGcalLinkMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *XGcalLinkMutation) Fields() []string {
+	fields := make([]string, 0, 6)
+	if m.group_id != nil {
+		fields = append(fields, xgcallink.FieldGroupID)
+	}
+	if m.source_type != nil {
+		fields = append(fields, xgcallink.FieldSourceType)
+	}
+	if m.source_id != nil {
+		fields = append(fields, xgcallink.FieldSourceID)
+	}
+	if m.event_id != nil {
+		fields = append(fields, xgcallink.FieldEventID)
+	}
+	if m.content_hash != nil {
+		fields = append(fields, xgcallink.FieldContentHash)
+	}
+	if m.synced_at != nil {
+		fields = append(fields, xgcallink.FieldSyncedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *XGcalLinkMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case xgcallink.FieldGroupID:
+		return m.GroupID()
+	case xgcallink.FieldSourceType:
+		return m.SourceType()
+	case xgcallink.FieldSourceID:
+		return m.SourceID()
+	case xgcallink.FieldEventID:
+		return m.EventID()
+	case xgcallink.FieldContentHash:
+		return m.ContentHash()
+	case xgcallink.FieldSyncedAt:
+		return m.SyncedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *XGcalLinkMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case xgcallink.FieldGroupID:
+		return m.OldGroupID(ctx)
+	case xgcallink.FieldSourceType:
+		return m.OldSourceType(ctx)
+	case xgcallink.FieldSourceID:
+		return m.OldSourceID(ctx)
+	case xgcallink.FieldEventID:
+		return m.OldEventID(ctx)
+	case xgcallink.FieldContentHash:
+		return m.OldContentHash(ctx)
+	case xgcallink.FieldSyncedAt:
+		return m.OldSyncedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown XGcalLink field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *XGcalLinkMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case xgcallink.FieldGroupID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGroupID(v)
+		return nil
+	case xgcallink.FieldSourceType:
+		v, ok := value.(xgcallink.SourceType)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSourceType(v)
+		return nil
+	case xgcallink.FieldSourceID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSourceID(v)
+		return nil
+	case xgcallink.FieldEventID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEventID(v)
+		return nil
+	case xgcallink.FieldContentHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContentHash(v)
+		return nil
+	case xgcallink.FieldSyncedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSyncedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown XGcalLink field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *XGcalLinkMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *XGcalLinkMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *XGcalLinkMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown XGcalLink numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *XGcalLinkMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *XGcalLinkMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *XGcalLinkMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown XGcalLink nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *XGcalLinkMutation) ResetField(name string) error {
+	switch name {
+	case xgcallink.FieldGroupID:
+		m.ResetGroupID()
+		return nil
+	case xgcallink.FieldSourceType:
+		m.ResetSourceType()
+		return nil
+	case xgcallink.FieldSourceID:
+		m.ResetSourceID()
+		return nil
+	case xgcallink.FieldEventID:
+		m.ResetEventID()
+		return nil
+	case xgcallink.FieldContentHash:
+		m.ResetContentHash()
+		return nil
+	case xgcallink.FieldSyncedAt:
+		m.ResetSyncedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown XGcalLink field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *XGcalLinkMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *XGcalLinkMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *XGcalLinkMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *XGcalLinkMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *XGcalLinkMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *XGcalLinkMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *XGcalLinkMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown XGcalLink unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *XGcalLinkMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown XGcalLink edge %s", name)
+}
 
 // XMetaMutation represents an operation that mutates the XMeta nodes in the graph.
 type XMetaMutation struct {

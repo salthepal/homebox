@@ -12,6 +12,10 @@ import (
 // Tx is a transactional client that is created by calling Client.Tx().
 type Tx struct {
 	config
+	// XGcalConnection is the client for interacting with the XGcalConnection builders.
+	XGcalConnection *XGcalConnectionClient
+	// XGcalLink is the client for interacting with the XGcalLink builders.
+	XGcalLink *XGcalLinkClient
 	// XMeta is the client for interacting with the XMeta builders.
 	XMeta *XMetaClient
 	// XProject is the client for interacting with the XProject builders.
@@ -149,6 +153,8 @@ func (tx *Tx) Client() *Client {
 }
 
 func (tx *Tx) init() {
+	tx.XGcalConnection = NewXGcalConnectionClient(tx.config)
+	tx.XGcalLink = NewXGcalLinkClient(tx.config)
 	tx.XMeta = NewXMetaClient(tx.config)
 	tx.XProject = NewXProjectClient(tx.config)
 	tx.XProjectStep = NewXProjectStepClient(tx.config)
@@ -161,7 +167,7 @@ func (tx *Tx) init() {
 // of them in order to commit or rollback the transaction.
 //
 // If a closed transaction is embedded in one of the generated entities, and the entity
-// applies a query, for example: XMeta.QueryXXX(), the query will be executed
+// applies a query, for example: XGcalConnection.QueryXXX(), the query will be executed
 // through the driver which created this transaction.
 //
 // Note that txDriver is not goroutine safe.

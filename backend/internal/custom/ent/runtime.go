@@ -7,6 +7,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/schema"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xgcalconnection"
+	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xgcallink"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xmeta"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xproject"
 	"github.com/sysadminsmedia/homebox/backend/internal/custom/ent/xprojectstep"
@@ -16,6 +18,68 @@ import (
 // (default values, validators, hooks and policies) and stitches it
 // to their package variables.
 func init() {
+	xgcalconnectionFields := schema.XGcalConnection{}.Fields()
+	_ = xgcalconnectionFields
+	// xgcalconnectionDescGoogleEmail is the schema descriptor for google_email field.
+	xgcalconnectionDescGoogleEmail := xgcalconnectionFields[2].Descriptor()
+	// xgcalconnection.DefaultGoogleEmail holds the default value on creation for the google_email field.
+	xgcalconnection.DefaultGoogleEmail = xgcalconnectionDescGoogleEmail.Default.(string)
+	// xgcalconnectionDescCalendarID is the schema descriptor for calendar_id field.
+	xgcalconnectionDescCalendarID := xgcalconnectionFields[3].Descriptor()
+	// xgcalconnection.DefaultCalendarID holds the default value on creation for the calendar_id field.
+	xgcalconnection.DefaultCalendarID = xgcalconnectionDescCalendarID.Default.(string)
+	// xgcalconnectionDescCalendarSummary is the schema descriptor for calendar_summary field.
+	xgcalconnectionDescCalendarSummary := xgcalconnectionFields[4].Descriptor()
+	// xgcalconnection.DefaultCalendarSummary holds the default value on creation for the calendar_summary field.
+	xgcalconnection.DefaultCalendarSummary = xgcalconnectionDescCalendarSummary.Default.(string)
+	// xgcalconnectionDescIncludeCompleted is the schema descriptor for include_completed field.
+	xgcalconnectionDescIncludeCompleted := xgcalconnectionFields[6].Descriptor()
+	// xgcalconnection.DefaultIncludeCompleted holds the default value on creation for the include_completed field.
+	xgcalconnection.DefaultIncludeCompleted = xgcalconnectionDescIncludeCompleted.Default.(bool)
+	// xgcalconnectionDescIncludeProjectSteps is the schema descriptor for include_project_steps field.
+	xgcalconnectionDescIncludeProjectSteps := xgcalconnectionFields[7].Descriptor()
+	// xgcalconnection.DefaultIncludeProjectSteps holds the default value on creation for the include_project_steps field.
+	xgcalconnection.DefaultIncludeProjectSteps = xgcalconnectionDescIncludeProjectSteps.Default.(bool)
+	// xgcalconnectionDescReminderMinutes is the schema descriptor for reminder_minutes field.
+	xgcalconnectionDescReminderMinutes := xgcalconnectionFields[8].Descriptor()
+	// xgcalconnection.DefaultReminderMinutes holds the default value on creation for the reminder_minutes field.
+	xgcalconnection.DefaultReminderMinutes = xgcalconnectionDescReminderMinutes.Default.(int)
+	// xgcalconnectionDescBroken is the schema descriptor for broken field.
+	xgcalconnectionDescBroken := xgcalconnectionFields[9].Descriptor()
+	// xgcalconnection.DefaultBroken holds the default value on creation for the broken field.
+	xgcalconnection.DefaultBroken = xgcalconnectionDescBroken.Default.(bool)
+	// xgcalconnectionDescLastError is the schema descriptor for last_error field.
+	xgcalconnectionDescLastError := xgcalconnectionFields[11].Descriptor()
+	// xgcalconnection.DefaultLastError holds the default value on creation for the last_error field.
+	xgcalconnection.DefaultLastError = xgcalconnectionDescLastError.Default.(string)
+	// xgcalconnectionDescCreatedAt is the schema descriptor for created_at field.
+	xgcalconnectionDescCreatedAt := xgcalconnectionFields[12].Descriptor()
+	// xgcalconnection.DefaultCreatedAt holds the default value on creation for the created_at field.
+	xgcalconnection.DefaultCreatedAt = xgcalconnectionDescCreatedAt.Default.(func() time.Time)
+	// xgcalconnectionDescUpdatedAt is the schema descriptor for updated_at field.
+	xgcalconnectionDescUpdatedAt := xgcalconnectionFields[13].Descriptor()
+	// xgcalconnection.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	xgcalconnection.DefaultUpdatedAt = xgcalconnectionDescUpdatedAt.Default.(func() time.Time)
+	// xgcalconnection.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	xgcalconnection.UpdateDefaultUpdatedAt = xgcalconnectionDescUpdatedAt.UpdateDefault.(func() time.Time)
+	xgcallinkFields := schema.XGcalLink{}.Fields()
+	_ = xgcallinkFields
+	// xgcallinkDescEventID is the schema descriptor for event_id field.
+	xgcallinkDescEventID := xgcallinkFields[4].Descriptor()
+	// xgcallink.EventIDValidator is a validator for the "event_id" field. It is called by the builders before save.
+	xgcallink.EventIDValidator = xgcallinkDescEventID.Validators[0].(func(string) error)
+	// xgcallinkDescContentHash is the schema descriptor for content_hash field.
+	xgcallinkDescContentHash := xgcallinkFields[5].Descriptor()
+	// xgcallink.DefaultContentHash holds the default value on creation for the content_hash field.
+	xgcallink.DefaultContentHash = xgcallinkDescContentHash.Default.(string)
+	// xgcallinkDescSyncedAt is the schema descriptor for synced_at field.
+	xgcallinkDescSyncedAt := xgcallinkFields[6].Descriptor()
+	// xgcallink.DefaultSyncedAt holds the default value on creation for the synced_at field.
+	xgcallink.DefaultSyncedAt = xgcallinkDescSyncedAt.Default.(func() time.Time)
+	// xgcallinkDescID is the schema descriptor for id field.
+	xgcallinkDescID := xgcallinkFields[0].Descriptor()
+	// xgcallink.DefaultID holds the default value on creation for the id field.
+	xgcallink.DefaultID = xgcallinkDescID.Default.(func() uuid.UUID)
 	xmetaFields := schema.XMeta{}.Fields()
 	_ = xmetaFields
 	// xmetaDescValue is the schema descriptor for value field.
