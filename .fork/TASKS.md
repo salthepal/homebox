@@ -67,12 +67,14 @@ Tables from PLAN §6 as `00002_x_projects.sql` (postgres + sqlite3), ent schemas
 
 **Status (2026-11-28):** done. Repo tests pass on SQLite and Postgres 16 (CRUD, status timestamps, cross-group isolation on every method, reorder validation, cascade at repo and DB level). `x_project_entities` has no ent schema (composite key with no upstream edge), so the repo reads and writes it with plain SQL on the same `*sql.DB` (`$n` vs `?` placeholders by dialect). `Repo.CompleteStep` stores the completion details, and the P2 service creates the maintenance entry first and passes its ID in.
 
-### [ ] P2 · Service, API, adapters, sweeper
+### [x] P2 · Service, API, adapters, sweeper
 - `internal/custom/upstream/entities.go` (exists-in-group checks, names for display) and `upstream/maintenance.go` (create entry, exists check), wrapping upstream repos.
 - Service rules from PLAN §6 (status suggestions, complete-step → maintenance entry).
 - Handlers in `internal/custom/api/projects.go` for every route in PLAN §6. Input validation, 404 for other groups' IDs.
 - Daily sweeper task registered in `registerCustom`.
 **Done when:** API tests (httptest through the real middleware) cover happy paths, a cross-group 404, and complete-step creating a real upstream maintenance entry. BE + BE-PG pass.
+
+**Status (2026-11-28):** done (stacked on P1). Adapters in `upstream/entities.go` (names, exists-in-group; bulk reads via upstream's ent client) and `upstream/maintenance.go` (create completed entry via upstream's repo, delete, exists-in-group). Service rules and the daily sweeper (`x-projects-sweep`, registered in `registerCustom`) are in `internal/custom/projects` (`service.go`, `sweep.go`). Handlers: `internal/custom/api/projects.go` (JSON is snake_case, dates `YYYY-MM-DD`; step/project bodies are full replaces; unknown fields are rejected). API tests are in `backend/app/api/x_projects_test.go` (`TestCustomProjects*`) and pass on SQLite and Postgres 16. Error mapping: other group's or missing ID → 404; validation, unknown item, bad IDs → 400; completing a done step → 409.
 
 ### [ ] P3 · Projects UI
 Pages `/x/projects` and `/x/projects/[id]` per PLAN §6. Use existing shadcn components from `frontend/components/ui` (import them explicitly). Strings in the layer locale. Responsive.
