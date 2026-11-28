@@ -128,9 +128,17 @@ Pages `/x/projects` and `/x/projects/[id]` per PLAN §6. Use existing shadcn com
 - Known limits: editing an event by hand in Google isn't reverted until its source changes; deleting one is (re-inserted on the next sync). Switching the target calendar is handled by G1's `switchCalendar` (old events are cleaned up); the content hash includes the calendar ID so the new calendar gets its own copies.
 - Real-calendar check (owner, after deploying with the G1 env vars): connect and pick the household calendar; schedule a maintenance entry on an item and within ~10 s a 🔧 all-day event with the deep link and a 1-day popup reminder appears; edit its name and date and the same event updates; mark it complete and it becomes ✅ on the completion date with no reminder; delete it and the event disappears; add an unrelated event by hand and confirm it is never touched; press Sync now and confirm "up to date".
 
-### [ ] G3 · Project-step events + polish
+### [x] G3 · Project-step events + polish
 `📋` step events (PLAN §7), wired to `include_project_steps`. Settings UI shows last sync and last error, plus Reconnect when the token is broken.
 **Done when:** a due step appears on the calendar and turns ✅ when completed.
+
+**Status (2026-11-28):** done. `gcal.StepProvider` (`gcal/steps.go`, reads `x_projects`/`x_project_steps` through the custom ent client) is registered next to the maintenance provider in `newGcalReconciler`. It yields nothing while `include_project_steps` is off, so the reconciler deletes the step events it made. `projects.Service` has an optional `Notifier` (`SetNotifier`); `registerCustomGcal` sets the reconciler as the notifier. Every successful write calls `s.changed(gid)` (create, update, delete, link items, add/update/delete/reorder step). `CompleteStep` notifies after the claim when it isn't logging maintenance, and after `RecordStepMaintenance` when it is; never from the release/revert path. `PUT /gcal/settings` also enqueues a reconcile, so toggling an option takes effect without "Sync now". Tests: fake-Google tests for the provider, app-level tests through the real wiring (service writes and the settings toggle reach the calendar), and service tests that a notification fires once per successful write and not for failed writes, conflicts or reverted claims. BE and BE-PG pass.
+- Steps with status `skipped`, and the not-done steps of `cancelled` projects, get no event (they would sit on the calendar forever); a step moved into either state loses its event. Done steps of cancelled projects keep their ✅ as history.
+- Done steps follow `include_completed` like maintenance ✅ events. A done step that logged a maintenance entry (`maintenance_entry_id` set) gets no step event of its own, because the entry already shows a ✅ on the completion date.
+- Step events stay on the due date, also once done (the completion date is only used for maintenance entries).
+- The settings UI already had last sync, last error, Reconnect and the steps option from G1/G2, so G3 made no frontend change.
+- `gcalReconcilerOptions` in `x_gcal_register.go` is a package var so tests can shorten the 10 s debounce.
+- Real-calendar check (owner, after deploying): give a project step a due date and within ~10 s a 📋 all-day event linking to the project appears; complete the step without logging maintenance and it becomes ✅ on the due date; turn "include project steps" off in `/x/calendar` and the step events disappear.
 
 ### [x] G4 · (optional) ICS feed
 Per-group revocable token (stored hashed), `GET /api/v1/x/calendar/{token}.ics`, outside the auth middleware, rate-limited. Needs a Cloudflare Access bypass for that path only.

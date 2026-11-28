@@ -129,6 +129,7 @@ func (h *gcalHandlers) settings(w http.ResponseWriter, r *http.Request) error {
 	if err := h.svc.UpdateSettings(r.Context(), auth.GID, in); err != nil {
 		return gcalError(err)
 	}
+	h.rec.Enqueue(auth.GID) // options (steps, completed, reminders, calendar) change the desired set
 	st, err := h.svc.Status(r.Context(), auth.GID)
 	if err != nil {
 		return err

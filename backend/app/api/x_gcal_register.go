@@ -24,18 +24,28 @@ func newGcalReconciler(a *app, xcfg xconfig.Config, xc *xent.Client, opts gcal.O
 	r := gcal.NewReconciler(svc, rec, gcal.MaintenanceProvider{
 		Source:  upstream.NewMaintenanceReader(a.db),
 		BaseURL: xcfg.PublicBaseURL,
+	}, gcal.StepProvider{
+		Source:  gcal.EntStepLister{Ent: xc},
+		BaseURL: xcfg.PublicBaseURL,
 	})
 	upstream.OnMaintenanceChange(a.db, r.Enqueue)
 	return r
 }
+
+// gcalReconcilerOptions are the reconciler options registerCustomGcal uses. The zero value is
+// production behavior; tests shorten the debounce.
+var gcalReconcilerOptions gcal.ReconcilerOptions
 
 // registerCustomGcal wires Google Calendar sync: the reconciler (stored in deps for the
 // "Sync now" route), the queue goroutine and the periodic full sync. Both background tasks
 // stop with the runner's context on shutdown, and neither starts while Google isn't
 // configured.
 func registerCustomGcal(a *app, xcfg xconfig.Config, xc *xent.Client, runner *graceful.Runner, deps *xapi.Deps) {
-	rec := newGcalReconciler(a, xcfg, xc, deps.Gcal, gcal.ReconcilerOptions{})
+	rec := newGcalReconciler(a, xcfg, xc, deps.Gcal, gcalReconcilerOptions)
 	deps.GcalReconciler = rec
+	if deps.Projects != nil {
+		deps.Projects.SetNotifier(rec) // project and step writes enqueue a debounced reconcile
+	}
 	deps.IcsFeed = upstream.NewMaintenanceReader(a.db) // ICS feed
 	deps.IcsGroups = upstream.NewGroups(a.db)
 	if !xcfg.GcalEnabled() {
